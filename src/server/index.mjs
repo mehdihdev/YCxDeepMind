@@ -3729,6 +3729,16 @@ app.post("/api/artifacts/generate", requireAuth, async (req, res) => {
   }
 });
 
+// Serve Live Bench React app at /bench
+const benchDir = path.join(__dirname, "..", "..", "dist", "bench");
+app.use("/bench", express.static(benchDir));
+app.get("/bench", (_req, res) => {
+  res.sendFile(path.join(benchDir, "index.html"));
+});
+app.get("/bench/", (_req, res) => {
+  res.sendFile(path.join(benchDir, "index.html"));
+});
+
 app.use(express.static(rendererDir));
 app.use((_req, res) => {
   res.sendFile(path.join(rendererDir, "index.html"));

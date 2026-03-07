@@ -1,12 +1,14 @@
 {
   "name": "forge-rde",
   "version": "0.1.0",
-  "description": "Forge RDE base Electron app scaffold",
+  "description": "Forge RDE - Multimodal Robotics Development Environment",
   "main": "src/main.js",
   "scripts": {
     "build:css": "npx @tailwindcss/cli -i ./src/renderer/styles.src.css -o ./src/renderer/styles.css",
     "dev": "electron .",
     "dev:css": "npx @tailwindcss/cli -i ./src/renderer/styles.src.css -o ./src/renderer/styles.css --watch",
+    "dev:bench": "vite",
+    "build:bench": "tsc -b && vite build",
     "dev:remote": "FORGE_REMOTE_URL=https://solusforge.com electron .",
     "start": "electron .",
     "server": "node src/server/index.mjs",
@@ -20,17 +22,32 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
     "@supabase/supabase-js": "^2.57.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
-    "session-file-store": "^1.5.0"
+    "jszip": "^3.10.1",
+    "mujoco-react": "^8.2.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "session-file-store": "^1.5.0",
+    "three": "^0.183.2",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.2.1",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.27",
     "electron": "^38.0.0",
     "postcss": "^8.5.8",
-    "tailwindcss": "^4.2.1"
+    "tailwindcss": "^4.2.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1"
   }
 }

@@ -117,6 +117,8 @@ function setActiveView(viewId) {
   if (elements.title) {
     elements.title.textContent = labels[viewId] || "Forge RDE";
   }
+  // Toggle fullscreen mode for bench view
+  document.body.classList.toggle("bench-active", viewId === "bench");
 }
 
 function renderRepoGrid(repos) {
