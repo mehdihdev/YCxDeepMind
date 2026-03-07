@@ -248,7 +248,11 @@ body {
 input,
 textarea,
 select {
-  @apply w-full min-w-0 rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20;
+  @apply w-full min-w-0 rounded-xl border border-slate-600/90 bg-slate-950/85 px-3 py-2.5 text-sm text-slate-100 shadow-sm shadow-slate-950/40 outline-none transition placeholder:text-slate-500 focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/25;
+}
+
+select {
+  @apply cursor-pointer rounded-xl border-slate-500/90 bg-slate-900/85 px-3 py-2.5 pr-9 font-medium text-slate-100 hover:border-sky-400/80;
 }
 
 textarea {
@@ -257,11 +261,11 @@ textarea {
 }
 
 button {
-  @apply inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:-translate-y-0.5 hover:border-sky-500/70 disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex items-center justify-center rounded-xl border border-slate-600/90 bg-gradient-to-b from-slate-800 to-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-100 shadow-sm shadow-slate-950/40 transition hover:-translate-y-0.5 hover:border-cyan-300/80 hover:shadow-md hover:shadow-cyan-900/25 active:translate-y-0 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-cyan-300/30 disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 .secondary-action {
-  @apply rounded-full bg-transparent;
+  @apply rounded-full border-slate-500/90 bg-slate-900/45 hover:bg-slate-800/70;
 }
 
 .danger-outline {
