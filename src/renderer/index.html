@@ -257,21 +257,6 @@
                 </div>
               </article>
 
-              <article class="card full robot-panel">
-                <div class="repo-header">
-                  <div>
-                    <h3>Mission Board</h3>
-                    <p class="muted">Planner output renders as execution phases, blockers, part needs, and team tasks.</p>
-                  </div>
-                  <p id="robot-graph-revision" class="storage-badge">Revision: 0</p>
-                </div>
-                <div id="robot-summary-grid" class="robot-summary-grid"></div>
-                <form id="robot-plan-form" class="stack-form">
-                  <textarea id="robot-objective" rows="4" placeholder="Build a pick-and-drive mission that mounts the arm, verifies the serial path, and prepares the robot for a live bench demo." required></textarea>
-                  <button type="submit">Plan Mission</button>
-                </form>
-                <div id="robot-mission-board" class="robot-board-list"></div>
-              </article>
 
               <article class="card full robot-panel">
                 <h3>Requirement Queue</h3>
@@ -284,15 +269,6 @@
                 <div id="robot-requirement-list" class="robot-requirement-list"></div>
               </article>
 
-              <article class="card full robot-panel">
-                <h3>Verifier</h3>
-                <p class="muted">Runs available repo/folder checks by default, then lets you focus on a specific robot issue if needed.</p>
-                <form id="robot-verify-form" class="stack-form">
-                  <textarea id="robot-observations" rows="4" placeholder="Optional focus: verify the arm serial path and camera pipeline, then compare observed device ports to the graph."></textarea>
-                  <button type="submit">Run Verifier</button>
-                </form>
-                <div id="robot-verifier-runs" class="robot-board-list"></div>
-              </article>
             </aside>
 
             <section class="card robot-graph-panel">
@@ -313,6 +289,15 @@
                 <h3>Robot Components</h3>
                 <div id="robot-discovered-components">
                   <p class="muted">Sync a workspace to discover robot components. The agent will analyze your docs, code, and configs to identify what hardware you have.</p>
+                </div>
+              </article>
+
+              <!-- Generated Files Panel - shows agent output -->
+              <article class="card full robot-panel" id="robot-generated-panel">
+                <p class="settings-eyebrow">AGENT OUTPUT</p>
+                <h3>Generated Files</h3>
+                <div id="robot-generated-files">
+                  <p class="muted">Select parts from the requirement queue to generate robot config files.</p>
                 </div>
               </article>
 
@@ -352,56 +337,7 @@
                 </div>
               </article>
 
-              <!-- Demo Features Panel - HIDDEN until connected -->
-              <article class="card full robot-panel robot-demo-panel hidden" id="robot-demo-panel">
-                <p class="settings-eyebrow">DEMO FEATURES</p>
-                <h3>Robot Controls</h3>
-                <div class="robot-demo-grid">
-                  <div class="robot-demo-card">
-                    <h4>Teleoperation</h4>
-                    <p class="muted">Leader arm controls follower</p>
-                    <div class="robot-toggle-row">
-                      <span id="robot-teleop-status">Off</span>
-                      <button id="robot-teleop-toggle" type="button" class="robot-toggle-btn">Enable</button>
-                    </div>
-                  </div>
-                  <div class="robot-demo-card">
-                    <h4>Calibration</h4>
-                    <p class="muted">Calibrate arm joints</p>
-                    <button id="robot-calibrate-btn" type="button">Start Wizard</button>
-                  </div>
-                  <div class="robot-demo-card">
-                    <h4>Recording</h4>
-                    <p class="muted">Record episodes for training</p>
-                    <div class="robot-toggle-row">
-                      <span id="robot-recording-status">Stopped</span>
-                      <button id="robot-record-toggle" type="button" class="robot-toggle-btn">Record</button>
-                    </div>
-                    <p id="robot-episode-count" class="muted">Episodes: 0</p>
-                  </div>
-                  <div class="robot-demo-card">
-                    <h4>Home Position</h4>
-                    <p class="muted">Move arm to home</p>
-                    <button id="robot-home-btn" type="button">Go Home</button>
-                  </div>
-                </div>
-              </article>
 
-              <!-- Live Arm State Panel - HIDDEN until connected -->
-              <article class="card full robot-panel hidden" id="robot-arm-panel">
-                <h3>Arm State</h3>
-                <div id="robot-arm-state" class="robot-arm-state">
-                  <p class="muted">Connect to see live joint positions</p>
-                </div>
-              </article>
-
-              <!-- Camera Preview Panel - HIDDEN until connected -->
-              <article class="card full robot-panel hidden" id="robot-camera-panel">
-                <h3>Camera Feed</h3>
-                <div id="robot-camera-preview" class="robot-camera-preview">
-                  <p class="muted">Connect to see camera feed</p>
-                </div>
-              </article>
 
               <article class="card full robot-panel">
                 <h3>Node Detail</h3>
@@ -416,11 +352,6 @@
                 <div id="robot-option-list" class="robot-option-list"></div>
               </article>
 
-              <article class="card full robot-panel">
-                <h3>Suggested Tasks</h3>
-                <p class="muted">Mission planner and verifier suggestions can be assigned to teammates and saved to the shared Task Log.</p>
-                <div id="robot-task-suggestions" class="robot-task-list"></div>
-              </article>
             </aside>
           </div>
         </section>

@@ -182,12 +182,25 @@ export function createLiveRobotController({ elements, setStatus }) {
 
     if (benchIframe) {
       if (hasComponents) {
-        // Only load the bench if we haven't already
-        if (benchIframe.src === "about:blank" || !benchIframe.src.includes("/bench/")) {
-          benchIframe.src = "/bench/";
+        // Build URL with workspace configuration
+        const config = {
+          armType: discoveredComponents.armType || "so100",
+          joints: "6",
+          ip: discoveredComponents.jetsonIp || "",
+          armPort: discoveredComponents.armPort || "8765",
+          cameraPort: discoveredComponents.cameraPort || "8766"
+        };
+        const params = new URLSearchParams(config);
+        const targetUrl = `/bench/?${params.toString()}`;
+
+        // Only reload if URL changed (prevents unnecessary refreshes)
+        if (benchIframe.src === "about:blank" || !benchIframe.src.includes(params.toString())) {
+          benchIframe.src = targetUrl;
         }
         benchIframe.style.display = "block";
       } else {
+        // Reset iframe to blank when no components
+        benchIframe.src = "about:blank";
         benchIframe.style.display = "none";
       }
     }
@@ -650,6 +663,11 @@ export function createLiveRobotController({ elements, setStatus }) {
     const episodes = JSON.parse(localStorage.getItem("forge_recorded_episodes") || "[]");
     recordingState.episodes = episodes.length;
     updateRecordingStatus();
+
+    // Ensure bench starts in empty state until components are discovered
+    updateBenchVisibility();
+    updatePanelVisibility();
+    renderDiscoveredComponents();
   }
 
   // Reset discovered components (called when switching workspaces)

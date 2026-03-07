@@ -15,6 +15,14 @@ import {
   getRobotComponentMeta,
   inferRobotComponentFromText
 } from "./lib/robot-components.mjs";
+import { searchParts as searchPartsBrowserbase, fetchDatasheet } from "./lib/browserbase.mjs";
+import {
+  indexDatasheet,
+  indexDatasheetFromUrl,
+  queryDatasheets,
+  askAboutDatasheet,
+  getIndexStats
+} from "./lib/chroma-rag.mjs";
 
 dotenv.config();
 
@@ -1338,7 +1346,7 @@ function mergeDiscoveryIntoGraph(graph, query, discoveryNodes) {
 
 async function discoverRobotParts(repoFullName, query) {
   const graph = await loadRobotGraph(repoFullName);
-  const rawResults = await searchDuckDuckGo(query);
+  const rawResults = await searchPartsBrowserbase(query);
   const enriched = [];
   for (const result of rawResults) {
     const evidence = await fetchSearchEvidence(result.url);
@@ -2599,14 +2607,17 @@ async function discoverRobotWorkspaceRequirement(source, requirementId) {
     throw new Error("Requirement not found.");
   }
 
-  const rawResults = await searchDuckDuckGo(requirement.searchQuery || requirement.title);
+  const rawResults = await searchPartsBrowserbase(requirement.searchQuery || requirement.title);
   const enrichedResults = [];
   for (const result of rawResults) {
-    const evidence = await fetchSearchEvidence(result.url);
+    // Use Browserbase fetchDatasheet for richer extraction
+    const datasheetInfo = await fetchDatasheet(result.url);
     enrichedResults.push({
       ...result,
-      excerpt: evidence.excerpt || "",
-      sourceType: evidence.sourceType || "web"
+      excerpt: datasheetInfo.description || result.snippet || "",
+      sourceType: datasheetInfo.type || "web",
+      specs: datasheetInfo.specs || {},
+      pdfUrl: datasheetInfo.type === "pdf" ? datasheetInfo.url : null
     });
   }
 
@@ -2617,7 +2628,7 @@ async function discoverRobotWorkspaceRequirement(source, requirementId) {
     {
       type: "parts-discovery",
       title: requirement.searchQuery || requirement.title,
-      source: "duckduckgo"
+      source: "browserbase"
     }
   ].slice(-12);
 
@@ -2669,10 +2680,194 @@ async function bindRobotWorkspaceOption(source, requirementId, optionId) {
 
   syncRequirementNodes(workspace);
   const saved = await saveRobotWorkspaceState(workspace);
+
+  // AGENTIC: Write selection to actual workspace folder
+  await writePartsToWorkspace(source, workspace);
+
   return {
     workspace: saved,
     requirement,
-    option
+    option,
+    filesWritten: true
+  };
+}
+
+// Write selected parts and config to actual workspace folder
+async function writePartsToWorkspace(source, workspace) {
+  let targetPath = null;
+
+  if (source.sourcePath) {
+    targetPath = source.sourcePath;
+  } else if (source.repoFullName) {
+    // For GitHub repos, write to a local cache that can be pushed
+    const repoSlug = source.repoFullName.replace(/\//g, "_");
+    targetPath = path.join(ROBOT_WORKSPACE_DIR, "exports", repoSlug);
+  }
+
+  if (!targetPath) return;
+
+  await fs.mkdir(targetPath, { recursive: true });
+
+  // Build robot-parts.json from all selected bindings
+  const selectedParts = (workspace.selectedOptionBindings || []).map((binding) => {
+    const requirement = workspace.requirements.find((r) => r.id === binding.requirementId);
+    const option = requirement?.options?.find((o) => o.id === binding.optionId);
+    return {
+      id: binding.id,
+      requirementId: binding.requirementId,
+      requirementTitle: requirement?.title || "Unknown",
+      partName: option?.title || binding.title,
+      partUrl: option?.url || null,
+      interfaces: option?.interfaces || [],
+      fitSummary: option?.fitSummary || "",
+      selectedAt: binding.createdAt
+    };
+  });
+
+  const partsJson = {
+    generatedAt: nowIso(),
+    generatedBy: "forge-rde",
+    workspace: workspace.metadata?.source?.label || "unknown",
+    parts: selectedParts
+  };
+
+  await fs.writeFile(
+    path.join(targetPath, "robot-parts.json"),
+    JSON.stringify(partsJson, null, 2),
+    "utf-8"
+  );
+
+  // Build robot.config.json with connection info from discovered components
+  const nodes = workspace.graph?.nodes || [];
+  const jetsonNode = nodes.find((n) =>
+    (n.label || "").toLowerCase().includes("jetson") ||
+    (n.componentLabel || "").toLowerCase().includes("compute")
+  );
+  const armNodes = nodes.filter((n) =>
+    (n.componentLabel || "").toLowerCase().includes("arm") ||
+    (n.label || "").toLowerCase().includes("arm")
+  );
+  const cameraNodes = nodes.filter((n) =>
+    (n.componentLabel || "").toLowerCase().includes("camera")
+  );
+
+  // Extract IP from evidence if possible
+  let jetsonIp = "192.168.1.100";
+  for (const node of nodes) {
+    for (const ev of node.evidence || []) {
+      const content = ev.content || ev.excerpt || "";
+      const ipMatch = content.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+      if (ipMatch) {
+        jetsonIp = ipMatch[1];
+        break;
+      }
+    }
+  }
+
+  const configJson = {
+    generatedAt: nowIso(),
+    generatedBy: "forge-rde",
+    robot: {
+      name: workspace.metadata?.source?.label || "my-robot",
+      type: armNodes.length ? "manipulator" : "unknown"
+    },
+    jetson: {
+      ip: jetsonIp,
+      user: "jetson"
+    },
+    servers: {
+      arm: {
+        port: 8765,
+        enabled: armNodes.length > 0
+      },
+      camera: {
+        port: 8766,
+        enabled: cameraNodes.length > 0
+      }
+    },
+    arms: armNodes.map((n) => ({
+      id: n.id,
+      name: n.label,
+      type: (n.label || "").toLowerCase().includes("leader") ? "leader" : "follower"
+    })),
+    cameras: cameraNodes.map((n) => ({
+      id: n.id,
+      name: n.label
+    })),
+    selectedParts: selectedParts.map((p) => ({
+      name: p.partName,
+      requirement: p.requirementTitle
+    }))
+  };
+
+  await fs.writeFile(
+    path.join(targetPath, "robot.config.json"),
+    JSON.stringify(configJson, null, 2),
+    "utf-8"
+  );
+
+  console.log(`[Forge RDE] Wrote robot-parts.json and robot.config.json to ${targetPath}`);
+}
+
+async function unbindRobotWorkspaceOption(source, requirementId) {
+  const workspace = await loadRobotWorkspaceState(source);
+  const requirement = workspace.requirements.find((item) => item.id === requirementId);
+  if (!requirement) {
+    throw new Error("Requirement not found.");
+  }
+
+  // Deselect all options
+  for (const item of requirement.options || []) {
+    item.selected = false;
+  }
+  requirement.status = requirement.options?.length ? "options_ready" : "open";
+  delete requirement.selectedOptionId;
+
+  // Remove from bindings
+  workspace.selectedOptionBindings = (workspace.selectedOptionBindings || []).filter(
+    (item) => item.requirementId !== requirementId
+  );
+
+  syncRequirementNodes(workspace);
+  const saved = await saveRobotWorkspaceState(workspace);
+  return {
+    workspace: saved,
+    requirement
+  };
+}
+
+async function deleteRobotWorkspaceRequirement(source, requirementId) {
+  const workspace = await loadRobotWorkspaceState(source);
+  const requirementIndex = workspace.requirements.findIndex((item) => item.id === requirementId);
+  if (requirementIndex === -1) {
+    throw new Error("Requirement not found.");
+  }
+
+  const [deletedRequirement] = workspace.requirements.splice(requirementIndex, 1);
+
+  // Remove from bindings
+  workspace.selectedOptionBindings = (workspace.selectedOptionBindings || []).filter(
+    (item) => item.requirementId !== requirementId
+  );
+
+  // Remove requirement node and any candidate nodes from graph
+  const requirementNodeId = makeRequirementNodeId(requirementId);
+  workspace.graph.nodes = (workspace.graph.nodes || []).filter((node) => {
+    if (node.id === requirementNodeId) return false;
+    if (String(node.id || "").startsWith(`candidate:${requirementId}:`)) return false;
+    return true;
+  });
+  workspace.graph.edges = (workspace.graph.edges || []).filter((edge) => {
+    if (edge.from === requirementNodeId || edge.to === requirementNodeId) return false;
+    if (String(edge.from || "").startsWith(`candidate:${requirementId}:`)) return false;
+    if (String(edge.to || "").startsWith(`candidate:${requirementId}:`)) return false;
+    return true;
+  });
+
+  const saved = await saveRobotWorkspaceState(workspace);
+  return {
+    workspace: saved,
+    deletedRequirement
   };
 }
 
@@ -3297,9 +3492,45 @@ app.post("/api/robot/requirements/:requirementId/select", requireAuth, async (re
       String(req.params.requirementId || ""),
       optionId
     );
-    res.json(robotWorkspaceResponse(result.workspace, { requirement: result.requirement, selectedOption: result.option }));
+    res.json(robotWorkspaceResponse(result.workspace, {
+      requirement: result.requirement,
+      option: result.option,
+      filesWritten: result.filesWritten
+    }));
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unable to bind selected option." });
+  }
+});
+
+app.post("/api/robot/requirements/:requirementId/deselect", requireAuth, async (req, res) => {
+  try {
+    const source = await resolveRobotWorkspaceSource({
+      repoFullName: req.body?.repoFullName,
+      sourcePath: req.body?.sourcePath
+    });
+    const result = await unbindRobotWorkspaceOption(
+      source,
+      String(req.params.requirementId || "")
+    );
+    res.json(robotWorkspaceResponse(result.workspace, { requirement: result.requirement }));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to deselect option." });
+  }
+});
+
+app.delete("/api/robot/requirements/:requirementId", requireAuth, async (req, res) => {
+  try {
+    const source = await resolveRobotWorkspaceSource({
+      repoFullName: req.body?.repoFullName,
+      sourcePath: req.body?.sourcePath
+    });
+    const result = await deleteRobotWorkspaceRequirement(
+      source,
+      String(req.params.requirementId || "")
+    );
+    res.json(robotWorkspaceResponse(result.workspace, { deletedRequirement: result.deletedRequirement }));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to delete requirement." });
   }
 });
 
@@ -3328,6 +3559,56 @@ app.get("/api/robot/graph", requireAuth, async (req, res) => {
     res.json(workspace);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unable to load robot graph." });
+  }
+});
+
+// Get generated files content (agentic output)
+app.get("/api/robot/generated-files", requireAuth, async (req, res) => {
+  const sourcePath = String(req.query.sourcePath || "").trim();
+  const repoFullName = String(req.query.repoFullName || "").trim();
+
+  let targetPath = null;
+  if (sourcePath) {
+    targetPath = sourcePath;
+  } else if (repoFullName) {
+    const repoSlug = repoFullName.replace(/\//g, "_");
+    targetPath = path.join(ROBOT_WORKSPACE_DIR, "exports", repoSlug);
+  }
+
+  if (!targetPath) {
+    res.status(400).json({ error: "sourcePath or repoFullName is required." });
+    return;
+  }
+
+  try {
+    const partsPath = path.join(targetPath, "robot-parts.json");
+    const configPath = path.join(targetPath, "robot.config.json");
+
+    let partsContent = null;
+    let configContent = null;
+
+    try {
+      partsContent = JSON.parse(await fs.readFile(partsPath, "utf-8"));
+    } catch {
+      // File doesn't exist yet
+    }
+
+    try {
+      configContent = JSON.parse(await fs.readFile(configPath, "utf-8"));
+    } catch {
+      // File doesn't exist yet
+    }
+
+    res.json({
+      targetPath,
+      files: {
+        "robot-parts.json": partsContent,
+        "robot.config.json": configContent
+      },
+      hasFiles: Boolean(partsContent || configContent)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to read generated files." });
   }
 });
 
@@ -3391,6 +3672,63 @@ app.post("/api/robot/verify", requireAuth, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Verifier run failed." });
+  }
+});
+
+// Datasheet RAG endpoints
+app.post("/api/datasheets/index", requireAuth, async (req, res) => {
+  const { url, partId, title, description } = req.body;
+  if (!url) {
+    res.status(400).json({ error: "url is required." });
+    return;
+  }
+  try {
+    const result = await indexDatasheetFromUrl(url, {
+      partId: partId || randomUUID(),
+      title: title || "Unknown Part",
+      description: description || "",
+      indexedBy: req.session?.userId
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Indexing failed." });
+  }
+});
+
+app.post("/api/datasheets/query", requireAuth, async (req, res) => {
+  const { question, partId } = req.body;
+  if (!question) {
+    res.status(400).json({ error: "question is required." });
+    return;
+  }
+  try {
+    const results = await queryDatasheets(question, partId ? { partId } : {});
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Query failed." });
+  }
+});
+
+app.post("/api/datasheets/ask", requireAuth, async (req, res) => {
+  const { question, partId } = req.body;
+  if (!question) {
+    res.status(400).json({ error: "question is required." });
+    return;
+  }
+  try {
+    const answer = await askAboutDatasheet(question, partId);
+    res.json(answer);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Ask failed." });
+  }
+});
+
+app.get("/api/datasheets/stats", requireAuth, async (req, res) => {
+  try {
+    const stats = await getIndexStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Stats failed." });
   }
 });
 

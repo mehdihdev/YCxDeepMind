@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-03-07T20:05:37.879Z",
+  "generatedBy": "forge-rde",
+  "workspace": "mehdihdev/YCxDeepMind",
+  "parts": [
+    {
+      "id": "f555097a-fd49-4898-bd92-0fa456fd8d61",
+      "requirementId": "3b5a82a0-fcc0-4e79-a000-14c2bc8edea2",
+      "requirementTitle": "camera with usb c for robot",
+      "partName": "SVPRO 1080P 60FPS USB Camera Module with Dual M12 Lens Sync 3840x1080 ...",
+      "partUrl": "https://www.amazon.com/SVPRO-Industrial-Synchronisation-Binoculars-Biometrics/dp/B0CQN3XF8B",
+      "interfaces": [
+        "usb"
+      ],
+      "fitSummary": "Candidate option for camera with usb c for robot.",
+      "selectedAt": "2026-03-07T20:05:37.877Z"
+    }
+  ]
+}
