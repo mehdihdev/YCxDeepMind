@@ -4,7 +4,11 @@ const title = document.getElementById("view-title");
 const meta = document.getElementById("meta");
 const statusText = document.getElementById("status-text");
 
-const accountButton = document.getElementById("account-button");
+const accountSignInButton = document.getElementById("account-signin");
+const accountSummary = document.getElementById("account-summary");
+const accountName = document.getElementById("account-name");
+const accountEmail = document.getElementById("account-email");
+const sidebarLogoutButton = document.getElementById("sidebar-logout");
 const loginForm = document.getElementById("login-form");
 const signInModal = document.getElementById("signin-modal");
 const githubConnectButton = document.getElementById("github-connect");
@@ -20,9 +24,11 @@ const artifactSaveButton = document.getElementById("artifact-save-button");
 const artifactStatus = document.getElementById("artifact-status");
 const artifactTitle = document.getElementById("artifact-title");
 const artifactDescription = document.getElementById("artifact-description");
+const artifactMermaidRender = document.getElementById("artifact-mermaid-render");
 const artifactMermaid = document.getElementById("artifact-mermaid");
 
 const teamStorageBadge = document.getElementById("team-storage-badge");
+const teamOpenModalButton = document.getElementById("team-open-modal");
 const teamCreateForm = document.getElementById("team-create-form");
 const teamJoinForm = document.getElementById("team-join-form");
 const teamSwitchForm = document.getElementById("team-switch-form");
@@ -51,14 +57,21 @@ const codeOpenFolderButton = document.getElementById("code-open-folder");
 const codeFileList = document.getElementById("code-file-list");
 const codeEditorMeta = document.getElementById("code-editor-meta");
 const monacoMount = document.getElementById("monaco-editor");
+const visualizerLoadForm = document.getElementById("visualizer-load-form");
+const visualizerRepoSelect = document.getElementById("visualizer-repo-select");
+const visualizerOpenFolderButton = document.getElementById("visualizer-open-folder");
+const visualizerStats = document.getElementById("visualizer-stats");
+const visualizerGraphMount = document.getElementById("visualizer-graph");
 
 const analyzeForm = document.getElementById("analyze-form");
 const repoPathInput = document.getElementById("repo-path");
 const analysisOutput = document.getElementById("analysis-output");
+const teamModal = document.getElementById("team-modal");
 
 const labels = {
   workspace: "Team Workspace",
   code: "Code Workspace",
+  visualizer: "Repository Visualizer",
   robot: "My Robot",
   bench: "Live Bench",
   artifacts: "Artifacts",
@@ -71,7 +84,11 @@ let showAllRepos = false;
 let generatedArtifact = null;
 let monacoEditor = null;
 let monacoLoaded = false;
+let mermaidLoaded = false;
+let visLoaded = false;
+let visNetwork = null;
 let currentCodeRepoPath = "";
+let currentVisualizerRepoPath = "";
 let currentTeamState = {
   storage: "unknown",
   teams: [],
@@ -113,6 +130,7 @@ function renderRepos(repos) {
     }
     renderRobotRepoSelector();
     renderCodeRepoSelector();
+    renderVisualizerRepoSelector();
     return;
   }
 
@@ -150,6 +168,7 @@ function renderRepos(repos) {
 
   renderRobotRepoSelector();
   renderCodeRepoSelector();
+  renderVisualizerRepoSelector();
 }
 
 function renderRobotRepoSelector() {
@@ -261,6 +280,75 @@ function renderCodeRepoSelector() {
   });
 }
 
+function renderVisualizerRepoSelector() {
+  if (!visualizerRepoSelect) return;
+
+  const saved = localStorage.getItem("forge_selected_visualizer_repo") || "";
+  visualizerRepoSelect.innerHTML = "";
+
+  if (!cachedRepos.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No repositories loaded";
+    visualizerRepoSelect.appendChild(option);
+    if (visualizerStats) {
+      visualizerStats.textContent = "Connect GitHub and refresh repos to build a graph.";
+    }
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a repository";
+  visualizerRepoSelect.appendChild(placeholder);
+
+  cachedRepos.forEach((repo) => {
+    const option = document.createElement("option");
+    option.value = repo.full_name;
+    option.textContent = repo.full_name;
+    option.selected = saved === repo.full_name;
+    visualizerRepoSelect.appendChild(option);
+  });
+}
+
+function wrapText(text, maxCharsPerLine = 34, maxLines = 4) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= maxCharsPerLine) {
+      current = next;
+      continue;
+    }
+    if (current) {
+      lines.push(current);
+      current = word;
+    } else {
+      lines.push(word.slice(0, maxCharsPerLine));
+      current = word.slice(maxCharsPerLine);
+    }
+    if (lines.length >= maxLines) break;
+  }
+
+  if (lines.length < maxLines && current) {
+    lines.push(current);
+  }
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+  }
+  if (words.length && lines.length === maxLines) {
+    const joined = lines.join(" ");
+    const original = words.join(" ");
+    if (joined.length < original.length) {
+      lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[.,;:!?]?$/, "")}...`;
+    }
+  }
+  return lines.join("\n");
+}
+
 function openSignInModal() {
   signInModal.classList.remove("hidden");
   signInModal.classList.remove("closing");
@@ -275,6 +363,25 @@ function closeSignInModal() {
     signInModal.classList.add("hidden");
     signInModal.setAttribute("aria-hidden", "true");
     signInModal.classList.remove("closing");
+  }, 220);
+}
+
+function openTeamModal() {
+  if (!teamModal) return;
+  teamModal.classList.remove("hidden");
+  teamModal.classList.remove("closing");
+  teamModal.classList.add("opening");
+  teamModal.setAttribute("aria-hidden", "false");
+}
+
+function closeTeamModal() {
+  if (!teamModal) return;
+  teamModal.classList.remove("opening");
+  teamModal.classList.add("closing");
+  setTimeout(() => {
+    teamModal.classList.add("hidden");
+    teamModal.setAttribute("aria-hidden", "true");
+    teamModal.classList.remove("closing");
   }, 220);
 }
 
@@ -350,6 +457,204 @@ async function ensureMonacoLoaded() {
         "Could not load Monaco from CDN. Check internet connection and retry.";
     }
     return false;
+  }
+}
+
+async function ensureMermaidLoaded() {
+  if (mermaidLoaded) return true;
+  try {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    window.mermaid.initialize({
+      startOnLoad: false,
+      theme: "dark",
+      securityLevel: "loose"
+    });
+    mermaidLoaded = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureVisNetworkLoaded() {
+  if (visLoaded) return true;
+  try {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/vis-network/standalone/umd/vis-network.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    visLoaded = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function renderRepositoryGraph(graphData) {
+  if (!visualizerGraphMount) return;
+  const ok = await ensureVisNetworkLoaded();
+  if (!ok || !window.vis?.Network) {
+    if (visualizerStats) {
+      visualizerStats.textContent =
+        "Could not load graph renderer. Check internet connection and try again.";
+    }
+    return;
+  }
+
+  const localNodes = new Set(
+    (graphData.nodes || []).map((node) => node.id)
+  );
+  const edges = (graphData.edges || [])
+    .filter(
+      (edge) =>
+        (edge.type === "local" || edge.type === "contains") &&
+        localNodes.has(edge.from) &&
+        localNodes.has(edge.to)
+    )
+    .slice(0, 3000);
+
+  const nodes = (graphData.nodes || []).map((node) => {
+    const isRoot = node.id === "__repo_root__";
+    const summaryText = isRoot
+      ? `Project Root\n${graphData.stats?.totalFiles ?? 0} items`
+      : wrapText(node.summary || "No summary available.", 36, 5);
+    const nameText = isRoot ? "Project Root" : node.label;
+    return {
+      id: node.id,
+      label: `${summaryText}\n\n${nameText}`,
+      title: undefined,
+      group: isRoot ? "root" : node.group || "file"
+    };
+  });
+
+  const dataset = {
+    nodes: new window.vis.DataSet(nodes),
+    edges: new window.vis.DataSet(
+      edges.map((edge) => ({
+        from: edge.from,
+        to: edge.to,
+        arrows: "to",
+        color:
+          edge.type === "contains"
+            ? { color: "#31445f", highlight: "#5789c6" }
+            : { color: "#4b6489", highlight: "#6fb2ff" }
+      }))
+    )
+  };
+
+  if (visNetwork) {
+    visNetwork.destroy();
+  }
+
+  visNetwork = new window.vis.Network(visualizerGraphMount, dataset, {
+    autoResize: true,
+    layout: {
+      improvedLayout: true
+    },
+    physics: {
+      stabilization: { iterations: 280, fit: true },
+      barnesHut: {
+        gravitationalConstant: -7600,
+        centralGravity: 0.08,
+        springLength: 50,
+        springConstant: 0.015,
+        damping: 0.24,
+        avoidOverlap: 0.8
+      }
+    },
+    interaction: {
+      hover: false,
+      tooltipDelay: 120,
+      navigationButtons: true,
+      keyboard: true
+    },
+    nodes: {
+      shape: "box",
+      margin: { top: 18, right: 20, bottom: 18, left: 20 },
+      widthConstraint: { minimum: 220, maximum: 290 },
+      borderWidth: 1.5,
+      borderWidthSelected: 2,
+      shadow: {
+        enabled: true,
+        color: "rgba(0, 0, 0, 0.35)",
+        size: 12,
+        x: 0,
+        y: 6
+      },
+      font: {
+        color: "#f0f5ff",
+        size: 14,
+        face: "Avenir Next, Inter, Segoe UI, Helvetica Neue, sans-serif"
+      },
+      labelHighlightBold: false
+    },
+    edges: {
+      smooth: {
+        enabled: true
+      },
+      width: 2,
+      color: { color: "#4b5d78", highlight: "#68b4ff" }
+    },
+    groups: {
+      root: { color: { background: "#184b2f", border: "#34d184" } },
+      ts: { color: { background: "#1f2b44", border: "#5e8fd6" } },
+      js: { color: { background: "#2a2a3b", border: "#8493dd" } },
+      jsx: { color: { background: "#21313f", border: "#66bdd4" } },
+      tsx: { color: { background: "#1f3045", border: "#61a9e7" } },
+      json: { color: { background: "#352f24", border: "#cda45e" } },
+      md: { color: { background: "#2c2f34", border: "#9aa1ab" } },
+      file: { color: { background: "#1d2230", border: "#69748a" } }
+    }
+  });
+}
+
+function normalizeMermaidGraph(input) {
+  let text = String(input || "").trim();
+  if (!text) return text;
+
+  // Convert single-line mermaid syntax with semicolons into new lines.
+  if (text.includes(";") && !text.includes("\n")) {
+    text = text
+      .split(";")
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  // Normalize graph keyword if present.
+  if (text.startsWith("graph LR")) {
+    text = text.replace(/^graph\\s+LR/, "flowchart LR");
+  }
+  return text;
+}
+
+async function renderArtifactDiagram(mermaidSource) {
+  if (!artifactMermaidRender || !artifactMermaid) return;
+  const normalized = normalizeMermaidGraph(mermaidSource);
+  artifactMermaid.textContent = normalized;
+
+  const ok = await ensureMermaidLoaded();
+  if (!ok) {
+    artifactMermaidRender.innerHTML = "";
+    return;
+  }
+
+  try {
+    const renderId = `artifactGraph_${Date.now()}`;
+    const { svg } = await window.mermaid.render(renderId, normalized);
+    artifactMermaidRender.innerHTML = svg;
+  } catch (err) {
+    artifactMermaidRender.innerHTML =
+      '<p class="muted">Unable to render graph. Showing source below.</p>';
   }
 }
 
@@ -521,7 +826,22 @@ async function refreshSession() {
   currentSession = data;
 
   if (!data.user) {
-    accountButton.textContent = "Sign in";
+    if (accountSignInButton) {
+      accountSignInButton.classList.remove("hidden");
+      accountSignInButton.textContent = "Sign in";
+    }
+    if (accountSummary) {
+      accountSummary.classList.add("hidden");
+    }
+    if (accountName) {
+      accountName.textContent = "Not signed in";
+    }
+    if (accountEmail) {
+      accountEmail.textContent = "-";
+    }
+    if (sidebarLogoutButton) {
+      sidebarLogoutButton.classList.add("hidden");
+    }
     githubSummary.textContent = "Connect GitHub to load recent projects.";
     if (settingsGithubStatus) {
       settingsGithubStatus.textContent = "Sign in to manage integrations.";
@@ -531,7 +851,21 @@ async function refreshSession() {
     return data;
   }
 
-  accountButton.textContent = data.user.name || "Account";
+  if (accountSignInButton) {
+    accountSignInButton.classList.add("hidden");
+  }
+  if (accountSummary) {
+    accountSummary.classList.remove("hidden");
+  }
+  if (accountName) {
+    accountName.textContent = data.user.name || "Account";
+  }
+  if (accountEmail) {
+    accountEmail.textContent = data.user.email || "";
+  }
+  if (sidebarLogoutButton) {
+    sidebarLogoutButton.classList.remove("hidden");
+  }
   githubSummary.textContent = data.githubConnected
     ? "Connected and syncing your recent projects."
     : "Connected account. Link GitHub to load recent projects.";
@@ -591,14 +925,16 @@ loginForm.addEventListener("submit", async (event) => {
   }
 });
 
-accountButton.addEventListener("click", async () => {
-  const session = await refreshSession();
-  if (!session.user) {
-    openSignInModal();
-    return;
-  }
-  setStatus(`Signed in as ${session.user.name || session.user.email}`);
-});
+if (accountSignInButton) {
+  accountSignInButton.addEventListener("click", async () => {
+    const session = await refreshSession();
+    if (!session.user) {
+      openSignInModal();
+      return;
+    }
+    setStatus(`Signed in as ${session.user.name || session.user.email}`);
+  });
+}
 
 githubConnectButton.addEventListener("click", () => {
   window.location.href = "/api/auth/github/connect";
@@ -632,6 +968,12 @@ if (codeRepoSelect) {
   });
 }
 
+if (visualizerRepoSelect) {
+  visualizerRepoSelect.addEventListener("change", () => {
+    localStorage.setItem("forge_selected_visualizer_repo", visualizerRepoSelect.value);
+  });
+}
+
 if (artifactGenerateForm) {
   artifactGenerateForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -655,7 +997,7 @@ if (artifactGenerateForm) {
           generatedArtifact?.description || "Integration diagram generated.";
       }
       if (artifactMermaid) {
-        artifactMermaid.textContent = generatedArtifact?.mermaid || "";
+        await renderArtifactDiagram(generatedArtifact?.mermaid || "");
       }
       if (artifactStatus) {
         artifactStatus.textContent = `Generated at ${new Date(
@@ -746,6 +1088,76 @@ if (codeOpenFolderButton) {
   });
 }
 
+if (visualizerLoadForm) {
+  visualizerLoadForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const repoFullName = visualizerRepoSelect?.value || "";
+    if (!repoFullName) {
+      setStatus("Select a repository for visualization.", true);
+      return;
+    }
+
+    try {
+      setStatus("Building repository graph...");
+      const data = await apiJson(
+        `/api/visualizer/graph/by-repo?repoFullName=${encodeURIComponent(
+          repoFullName
+        )}&includeSummaries=1`,
+        { method: "GET" }
+      );
+      await renderRepositoryGraph(data);
+      if (visualizerStats) {
+        visualizerStats.textContent = `${repoFullName} • ${data.stats?.totalFiles ?? 0} files • ${
+          data.stats?.totalEdges ?? 0
+        } edges • summaries: ${data.stats?.summaryModel || "unavailable"}`;
+      }
+      setStatus("Repository graph loaded");
+    } catch (err) {
+      setStatus(err.message, true);
+      if (visualizerStats) {
+        visualizerStats.textContent = "Unable to build graph for selected repository.";
+      }
+    }
+  });
+}
+
+if (visualizerOpenFolderButton) {
+  visualizerOpenFolderButton.addEventListener("click", async () => {
+    if (!window.forgeAPI?.openFolder) {
+      setStatus("Open Folder is only available in desktop mode.", true);
+      return;
+    }
+
+    try {
+      const result = await window.forgeAPI.openFolder();
+      if (!result || result.canceled || !result.path) {
+        return;
+      }
+
+      setStatus("Building graph from selected folder...");
+      const data = await apiJson(
+        `/api/visualizer/graph?repoPath=${encodeURIComponent(result.path)}&includeSummaries=1`,
+        { method: "GET" }
+      );
+      currentVisualizerRepoPath = data.repoPath || result.path;
+      await renderRepositoryGraph(data);
+      if (visualizerStats) {
+        visualizerStats.textContent = `${currentVisualizerRepoPath} • ${
+          data.stats?.totalFiles ?? 0
+        } files • ${data.stats?.totalEdges ?? 0} edges • summaries: ${
+          data.stats?.summaryModel || "unavailable"
+        }`;
+      }
+      setStatus("Repository graph loaded");
+    } catch (err) {
+      setStatus(err.message, true);
+      if (visualizerStats) {
+        visualizerStats.textContent = "Unable to build graph for selected folder.";
+      }
+    }
+  });
+}
+
 if (settingsProfileForm) {
   settingsProfileForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -754,13 +1166,10 @@ if (settingsProfileForm) {
 
     try {
       setStatus("Saving profile...");
-      const data = await apiJson("/api/account/profile", {
+      await apiJson("/api/account/profile", {
         method: "POST",
         body: JSON.stringify({ first_name: firstName })
       });
-      if (data?.user?.name) {
-        accountButton.textContent = data.user.name;
-      }
       await refreshSession();
       setStatus("Profile updated");
     } catch (err) {
@@ -832,6 +1241,25 @@ if (settingsLogoutButton) {
   });
 }
 
+if (sidebarLogoutButton) {
+  sidebarLogoutButton.addEventListener("click", async () => {
+    try {
+      await apiJson("/api/auth/logout", { method: "POST" });
+      renderRepos([]);
+      await refreshSession();
+      setStatus("Logged out");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (teamOpenModalButton) {
+  teamOpenModalButton.addEventListener("click", () => {
+    openTeamModal();
+  });
+}
+
 teamCreateForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = document.getElementById("team-name").value.trim();
@@ -845,6 +1273,7 @@ teamCreateForm.addEventListener("submit", async (event) => {
     });
     await refreshTeamState();
     teamCreateForm.reset();
+    closeTeamModal();
     setStatus("Team created");
   } catch (err) {
     setStatus(err.message, true);
@@ -864,6 +1293,7 @@ teamJoinForm.addEventListener("submit", async (event) => {
     });
     await refreshTeamState();
     teamJoinForm.reset();
+    closeTeamModal();
     setStatus("Joined team");
   } catch (err) {
     setStatus(err.message, true);
@@ -936,6 +1366,9 @@ window.forgeAPI
   });
 
 setActiveView("workspace");
+if (artifactMermaid?.textContent) {
+  renderArtifactDiagram(artifactMermaid.textContent);
+}
 
 refreshSession().catch(() => {
   setStatus("Unable to load session", true);
@@ -945,6 +1378,9 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof HTMLElement && target.dataset.closeModal === "true") {
     closeSignInModal();
+  }
+  if (target instanceof HTMLElement && target.dataset.closeTeamModal === "true") {
+    closeTeamModal();
   }
 
   if (target instanceof HTMLElement && target.dataset.deleteTeam) {

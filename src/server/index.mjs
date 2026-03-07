@@ -26,10 +26,15 @@ const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY || "";
 const NANO_BANANA_MODEL = process.env.NANO_BANANA_MODEL || "gemini-3.1-flash-image-preview";
+const VISUALIZER_SUMMARY_MODEL =
+  process.env.VISUALIZER_SUMMARY_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
 const GOOGLE_GENAI_BASE_URL =
   process.env.GOOGLE_GENAI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta";
 const LOCAL_REPOS_ROOT = process.env.LOCAL_REPOS_ROOT || "";
 const GITHUB_TOKENS_TABLE = "github_tokens";
+const VISUALIZER_MAX_FILES = Number(process.env.VISUALIZER_MAX_FILES || 500);
+const VISUALIZER_SUMMARY_BATCH_SIZE = Number(process.env.VISUALIZER_SUMMARY_BATCH_SIZE || 10);
+const VISUALIZER_SUMMARY_MAX_CHARS = Number(process.env.VISUALIZER_SUMMARY_MAX_CHARS || 2200);
 
 const supabaseApiKey = SUPABASE_SECRET_KEY || SUPABASE_PUBLISHABLE_KEY;
 const supabase = SUPABASE_URL && supabaseApiKey
@@ -459,6 +464,226 @@ async function listRepoFiles(repoPath) {
   await walk(repoPath);
   files.sort((a, b) => a.localeCompare(b));
   return files;
+}
+
+function classifyImportSource(source) {
+  if (source.startsWith(".") || source.startsWith("/") || source.startsWith("@/")) {
+    return "local";
+  }
+  return "external";
+}
+
+function resolveLocalImportPath(importSource, fromRelativePath, allRelativePaths) {
+  const fromDir = path.dirname(fromRelativePath);
+  let targetBase = "";
+
+  if (importSource.startsWith("@/")) {
+    targetBase = importSource.slice(2);
+  } else if (importSource.startsWith("/")) {
+    targetBase = importSource.slice(1);
+  } else {
+    targetBase = path
+      .normalize(path.join(fromDir, importSource))
+      .split(path.sep)
+      .join("/");
+  }
+
+  const candidates = [
+    targetBase,
+    `${targetBase}.ts`,
+    `${targetBase}.tsx`,
+    `${targetBase}.js`,
+    `${targetBase}.jsx`,
+    `${targetBase}.mjs`,
+    `${targetBase}.cjs`,
+    `${targetBase}/index.ts`,
+    `${targetBase}/index.tsx`,
+    `${targetBase}/index.js`,
+    `${targetBase}/index.jsx`
+  ];
+
+  for (const candidate of candidates) {
+    if (allRelativePaths.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function extractImportsFromCode(content) {
+  const imports = [];
+  const importRegex =
+    /import\s+[^'"\\n]*?from\s+['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)|require\(\s*['"]([^'"]+)['"]\s*\)/g;
+  let match;
+  while ((match = importRegex.exec(content)) !== null) {
+    const source = match[1] || match[2] || match[3];
+    if (source) imports.push(source);
+  }
+  return imports;
+}
+
+async function summarizeFilesWithGemini(repoPath, relativePaths) {
+  const summaryByPath = new Map();
+  if (!GOOGLE_AI_API_KEY) {
+    return summaryByPath;
+  }
+
+  const prepared = [];
+  for (const relPath of relativePaths) {
+    try {
+      const absolute = safeJoinRepoPath(repoPath, relPath);
+      const stat = await fs.stat(absolute);
+      if (!stat.isFile()) continue;
+      if (stat.size > 250_000) {
+        prepared.push({
+          path: relPath,
+          snippet: `Large file (${stat.size} bytes). Summarize only by filename and likely role.`
+        });
+        continue;
+      }
+      const content = await fs.readFile(absolute, "utf-8");
+      prepared.push({
+        path: relPath,
+        snippet: content.slice(0, VISUALIZER_SUMMARY_MAX_CHARS)
+      });
+    } catch {
+      prepared.push({
+        path: relPath,
+        snippet: "Unable to read file content. Summarize only by filename."
+      });
+    }
+  }
+
+  for (let i = 0; i < prepared.length; i += VISUALIZER_SUMMARY_BATCH_SIZE) {
+    const batch = prepared.slice(i, i + VISUALIZER_SUMMARY_BATCH_SIZE);
+    const prompt = `Summarize each source file for a repository visualizer.
+Return ONLY JSON in this exact shape:
+{
+  "summaries": [
+    { "path": "file/path.ext", "summary": "single concise sentence" }
+  ]
+}
+
+Rules:
+- Include every provided path exactly once.
+- Each summary must be specific to that file and <= 28 words.
+- Focus on role, behavior, and key responsibility.
+- No markdown, no extra keys, no commentary.
+
+Files:
+${JSON.stringify(batch, null, 2)}`;
+
+    const endpoint = `${GOOGLE_GENAI_BASE_URL}/models/${encodeURIComponent(
+      VISUALIZER_SUMMARY_MODEL
+    )}:generateContent`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": GOOGLE_AI_API_KEY
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const data = await response.json();
+      const text = extractTextParts(data);
+      if (!text) continue;
+
+      const parsed = parseJsonFromModelText(text);
+      const summaries = Array.isArray(parsed?.summaries) ? parsed.summaries : [];
+      for (const item of summaries) {
+        const relPath = String(item?.path || "");
+        const summary = String(item?.summary || "").trim();
+        if (relPath && summary) {
+          summaryByPath.set(relPath, summary);
+        }
+      }
+    } catch {
+      // Best-effort summaries only.
+    }
+  }
+
+  return summaryByPath;
+}
+
+async function buildRepositoryGraph(repoPath, options = {}) {
+  const includeSummaries = options.includeSummaries !== false;
+  const files = await listRepoFiles(repoPath);
+  const cappedFiles = files.slice(0, VISUALIZER_MAX_FILES);
+  const allRelative = new Set(cappedFiles);
+  const summaryByPath = includeSummaries
+    ? await summarizeFilesWithGemini(repoPath, cappedFiles)
+    : new Map();
+  const nodes = [];
+  const edges = [];
+  const externalDeps = new Set();
+  const rootNodeId = "__repo_root__";
+
+  nodes.push({
+    id: rootNodeId,
+    label: path.basename(repoPath) || "Repository",
+    group: "root",
+    path: repoPath,
+    summary: "Repository root node connecting all indexed files."
+  });
+
+  for (const relPath of cappedFiles) {
+    nodes.push({
+      id: relPath,
+      label: path.basename(relPath),
+      group: path.extname(relPath).replace(".", "") || "file",
+      path: relPath,
+      summary:
+        summaryByPath.get(relPath) ||
+        "Gemini summary unavailable for this file in the current run."
+    });
+    edges.push({ from: rootNodeId, to: relPath, type: "contains" });
+  }
+
+  for (const relPath of cappedFiles) {
+    try {
+      const absolute = safeJoinRepoPath(repoPath, relPath);
+      const stat = await fs.stat(absolute);
+      if (stat.size > 250_000) continue;
+      const content = await fs.readFile(absolute, "utf-8");
+      const imports = extractImportsFromCode(content);
+      for (const imp of imports) {
+        const importType = classifyImportSource(imp);
+        if (importType === "local") {
+          const resolved = resolveLocalImportPath(imp, relPath, allRelative);
+          if (resolved) {
+            edges.push({ from: relPath, to: resolved, type: "local" });
+          }
+        } else {
+          externalDeps.add(imp);
+          edges.push({ from: relPath, to: imp, type: "external" });
+        }
+      }
+    } catch {
+      // Ignore individual file parse/read failures.
+    }
+  }
+
+  return {
+    repoPath,
+    stats: {
+      totalFiles: cappedFiles.length,
+      totalEdges: edges.length,
+      summaryModel: includeSummaries && GOOGLE_AI_API_KEY ? VISUALIZER_SUMMARY_MODEL : null,
+      externalDependencies: Array.from(externalDeps).sort().slice(0, 100)
+    },
+    nodes,
+    edges
+  };
 }
 
 async function resolveRepoFullNameToLocalPath(repoFullName) {
@@ -900,6 +1125,46 @@ app.get("/api/code/tree/by-repo", requireAuth, async (req, res) => {
     res.json({ repoPath, repoFullName, files });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Unable to resolve local repository." });
+  }
+});
+
+app.get("/api/visualizer/graph/by-repo", requireAuth, async (req, res) => {
+  const repoFullName = String(req.query.repoFullName || "").trim();
+  const includeSummaries = String(req.query.includeSummaries || "1") !== "0";
+  if (!repoFullName) {
+    res.status(400).json({ error: "repoFullName is required." });
+    return;
+  }
+
+  try {
+    const repoPath = await resolveRepoFullNameToLocalPath(repoFullName);
+    const graph = await buildRepositoryGraph(repoPath, { includeSummaries });
+    res.json({ repoFullName, ...graph });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to build repository graph." });
+  }
+});
+
+app.get("/api/visualizer/graph", requireAuth, async (req, res) => {
+  const repoPathRaw = String(req.query.repoPath || "").trim();
+  const includeSummaries = String(req.query.includeSummaries || "1") !== "0";
+  if (!repoPathRaw) {
+    res.status(400).json({ error: "repoPath is required." });
+    return;
+  }
+
+  try {
+    const repoPath = normalizeRepoPath(repoPathRaw);
+    const stat = await fs.stat(repoPath);
+    if (!stat.isDirectory()) {
+      res.status(400).json({ error: "repoPath must be a directory." });
+      return;
+    }
+
+    const graph = await buildRepositoryGraph(repoPath, { includeSummaries });
+    res.json(graph);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to build repository graph." });
   }
 });
 

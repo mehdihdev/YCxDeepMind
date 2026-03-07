@@ -12,16 +12,29 @@
     </div>
     <div class="app-shell">
       <aside class="sidebar">
-        <h1>🛠️ Forge RDE</h1>
-        <p class="tagline">Robotics Development Environment</p>
-        <nav class="nav">
-          <button class="nav-item active" data-view="workspace">Team Workspace</button>
-          <button class="nav-item" data-view="code">Code Workspace</button>
-          <button class="nav-item" data-view="robot">My Robot</button>
-          <button class="nav-item" data-view="bench">Live Bench</button>
-          <button class="nav-item" data-view="artifacts">Artifacts</button>
-          <button class="nav-item" data-view="settings">Account Settings</button>
-        </nav>
+        <div>
+          <h1>🛠️ Forge RDE</h1>
+          <p class="tagline">Robotics Development Environment</p>
+          <nav class="nav">
+            <button class="nav-item active" data-view="workspace">Team Workspace</button>
+            <button class="nav-item" data-view="code">Code Workspace</button>
+            <button class="nav-item" data-view="visualizer">Repository Visualizer</button>
+            <button class="nav-item" data-view="robot">My Robot</button>
+            <button class="nav-item" data-view="bench">Live Bench</button>
+            <button class="nav-item" data-view="artifacts">Artifacts</button>
+            <button class="nav-item" data-view="settings">Account Settings</button>
+          </nav>
+        </div>
+        <div class="sidebar-account">
+          <button id="account-signin" class="account-button" type="button">Sign in</button>
+          <div id="account-summary" class="account-summary hidden">
+            <p id="account-name" class="account-name">Not signed in</p>
+            <p id="account-email" class="account-email">-</p>
+          </div>
+          <button id="sidebar-logout" class="secondary-action sidebar-logout hidden" type="button">
+            Logout
+          </button>
+        </div>
       </aside>
       <main class="content">
         <header class="topbar">
@@ -30,7 +43,6 @@
             <p id="meta">Loading app metadata...</p>
             <p id="status-text"></p>
           </div>
-          <button id="account-button" class="account-button" type="button">Sign in</button>
         </header>
 
         <section class="view active" id="workspace">
@@ -46,18 +58,6 @@
                 </div>
                 <div class="team-grid">
                   <div class="team-panel">
-                    <h4>Create Team</h4>
-                    <form id="team-create-form" class="stack-form">
-                      <input id="team-name" type="text" placeholder="Forge Robotics Crew" required />
-                      <button type="submit">Create Team</button>
-                    </form>
-                    <h4>Join Team</h4>
-                    <form id="team-join-form" class="stack-form">
-                      <input id="team-invite-code" type="text" placeholder="Invite Code" required />
-                      <button type="submit">Join Team</button>
-                    </form>
-                  </div>
-                  <div class="team-panel">
                     <h4>Current Team</h4>
                     <form id="team-switch-form" class="stack-form">
                       <select id="team-select"></select>
@@ -67,12 +67,11 @@
                     <p id="active-team-meta" class="muted">No active team</p>
                     <h4>Members</h4>
                     <ul id="team-members-list" class="simple-list"></ul>
+                    <div class="team-panel-footer">
+                      <p class="muted">Need another workspace? Create a new team or join with an invite code.</p>
+                      <button id="team-open-modal" type="button">Create/Join Team</button>
+                    </div>
                   </div>
-                </div>
-              </article>
-
-              <article class="card full">
-                <div class="team-grid">
                   <div class="team-panel">
                     <h4>Task Log</h4>
                     <form id="team-task-form" class="stack-form">
@@ -84,6 +83,11 @@
                     </form>
                     <ul id="team-task-list" class="simple-list"></ul>
                   </div>
+                </div>
+              </article>
+
+              <article class="card full">
+                <div class="team-grid">
                   <div class="team-panel">
                     <h4>Saved Runs</h4>
                     <h4>Saved Fixes</h4>
@@ -139,6 +143,25 @@
                 <div id="monaco-editor" class="monaco-editor"></div>
               </div>
             </div>
+          </article>
+        </section>
+
+        <section class="view" id="visualizer">
+          <article class="card full">
+            <h3>Repository Visualizer</h3>
+            <p class="muted">RDE-style file dependency graph generated from your selected repository.</p>
+            <form id="visualizer-load-form" class="stack-form">
+              <label for="visualizer-repo-select" class="muted">Source repository</label>
+              <select id="visualizer-repo-select">
+                <option value="">No repositories loaded</option>
+              </select>
+              <div class="actions">
+                <button type="submit">Load Visualizer Graph</button>
+                <button id="visualizer-open-folder" type="button" class="secondary-action">Open Folder…</button>
+              </div>
+            </form>
+            <p id="visualizer-stats" class="muted">Select a repository to build its graph.</p>
+            <div id="visualizer-graph" class="visualizer-graph"></div>
           </article>
         </section>
 
@@ -202,6 +225,7 @@
               <div class="team-panel">
                 <h4 id="artifact-title">No artifact generated</h4>
                 <p id="artifact-description" class="muted">The generated integration diagram will appear below.</p>
+                <div id="artifact-mermaid-render" class="artifact-mermaid-render"></div>
                 <pre id="artifact-mermaid" class="output">flowchart LR
   A["Generate diagram"] --> B["Preview here"]</pre>
               </div>
@@ -271,6 +295,32 @@
           <button type="submit" class="signin-submit">Login</button>
           <p class="signin-footnote">New here? <span>Create an account</span></p>
         </form>
+      </div>
+    </div>
+
+    <div id="team-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-team-modal="true"></div>
+      <div class="modal-card team-modal-card">
+        <div class="modal-title-row">
+          <h3>Team Access</h3>
+          <button type="button" class="secondary-action" data-close-team-modal="true">Close</button>
+        </div>
+        <div class="team-modal-grid">
+          <div class="team-modal-pane">
+            <h4>Create Team</h4>
+            <form id="team-create-form" class="stack-form">
+              <input id="team-name" type="text" placeholder="Forge Robotics Crew" required />
+              <button type="submit">Create Team</button>
+            </form>
+          </div>
+          <div class="team-modal-pane">
+            <h4>Join Team</h4>
+            <form id="team-join-form" class="stack-form">
+              <input id="team-invite-code" type="text" placeholder="Invite Code" required />
+              <button type="submit">Join Team</button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
 
