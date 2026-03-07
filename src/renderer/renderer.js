@@ -124,6 +124,7 @@ let terminalUnsubscribeExit = null;
 let terminalInstance = null;
 let terminalFitAddon = null;
 let terminalStarted = false;
+let terminalEchoLocalInput = false;
 let currentTeamState = {
   storage: "unknown",
   teams: [],
@@ -219,6 +220,20 @@ function renderRepoSuggestions(searchInput, suggestionsEl, selectEl) {
 function appendTerminalOutput(text) {
   if (terminalInstance) {
     terminalInstance.write(String(text || ""));
+  }
+}
+
+function echoTerminalInputLocally(data) {
+  if (!terminalInstance || !data) return;
+  const text = String(data);
+  for (const ch of text) {
+    if (ch === "\r") {
+      terminalInstance.write("\r\n");
+    } else if (ch === "\u007f") {
+      terminalInstance.write("\b \b");
+    } else {
+      terminalInstance.write(ch);
+    }
   }
 }
 
@@ -321,8 +336,12 @@ async function initCodeOnlyTerminal() {
   terminalFitAddon.fit();
   terminalInstance.focus();
   terminalMount.addEventListener("mousedown", () => terminalInstance?.focus());
+  codeTerminal?.addEventListener("mousedown", () => terminalInstance?.focus());
 
   terminalInstance.onData(async (data) => {
+    if (terminalEchoLocalInput) {
+      echoTerminalInputLocally(data);
+    }
     if (!window.forgeAPI?.writeTerminal) return;
     await window.forgeAPI.writeTerminal({ data });
   });
@@ -331,6 +350,7 @@ async function initCodeOnlyTerminal() {
     resizeWorkspaceTerminal().catch(() => {});
   });
   setTimeout(() => {
+    terminalInstance?.focus();
     resizeWorkspaceTerminal().catch(() => {});
   }, 0);
 }
@@ -352,8 +372,8 @@ async function startWorkspaceTerminal(cwd) {
     if (!result?.ok) {
       throw new Error(result?.error || "Unable to start terminal.");
     }
+    terminalEchoLocalInput = result?.mode === "fallback";
     terminalStarted = true;
-    appendTerminalOutput(`\r\n[terminal] started in ${launchCwd || "default cwd"}\r\n`);
     await resizeWorkspaceTerminal();
   } catch (err) {
     appendTerminalOutput(`\r\n[terminal] ${err.message}\r\n`);
@@ -1652,6 +1672,10 @@ if (codeOpenNewWindowButton) {
       setStatus("Load a repository or folder first.", true);
       return;
     }
+    if (!currentCodeFilePath) {
+      setStatus("Select a file first so the code-only window opens on it.", true);
+      return;
+    }
     if (!window.forgeAPI?.openCodeWindow) {
       setStatus("Open in New Window is only available in desktop mode.", true);
       return;
@@ -1687,6 +1711,7 @@ if (terminalRestartButton) {
     if (!window.forgeAPI?.stopTerminal) return;
     await window.forgeAPI.stopTerminal();
     terminalStarted = false;
+    terminalEchoLocalInput = false;
     await startWorkspaceTerminal(currentCodeRepoPath || "");
   });
 }
@@ -1982,10 +2007,10 @@ if (isCodeOnlyWorkspace) {
     });
     terminalUnsubscribeExit = window.forgeAPI.onTerminalExit((payload) => {
       terminalStarted = false;
+      terminalEchoLocalInput = false;
       appendTerminalOutput(`\r\n[terminal exited] code=${payload?.code ?? "unknown"}\r\n`);
     });
   }
-  startWorkspaceTerminal(currentCodeRepoPath || "").catch(() => {});
   requestAnimationFrame(() => {
     if (monacoEditor) {
       monacoEditor.layout();
@@ -2015,6 +2040,9 @@ refreshSession()
         setActiveView("code");
         if (initialFilePath) {
           await loadCodeFile(initialFilePath);
+        }
+        if (isCodeOnlyWorkspace) {
+          await startWorkspaceTerminal(currentCodeRepoPath || "");
         }
       } catch (err) {
         setStatus(err.message, true);
@@ -2046,10 +2074,15 @@ refreshSession()
           if (initialFilePath) {
             await loadCodeFile(initialFilePath);
           }
+          if (isCodeOnlyWorkspace) {
+            await startWorkspaceTerminal(currentCodeRepoPath || "");
+          }
         }
       } catch (err) {
         setStatus(err.message, true);
       }
+    } else if (isCodeOnlyWorkspace) {
+      await startWorkspaceTerminal(currentCodeRepoPath || "");
     }
   })
   .catch(() => {
@@ -2145,4 +2178,5 @@ window.addEventListener("beforeunload", () => {
   if (window.forgeAPI?.stopTerminal) {
     window.forgeAPI.stopTerminal().catch(() => {});
   }
+  terminalEchoLocalInput = false;
 });

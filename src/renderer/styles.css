@@ -325,11 +325,14 @@ body.code-only-workspace .sidebar {
 }
 
 body.code-only-workspace .app-shell {
+  height: 100vh;
   grid-template-columns: 1fr;
 }
 
 body.code-only-workspace .content {
   padding: 0;
+  height: calc(100vh - 48px);
+  min-height: calc(100vh - 48px);
 }
 
 body.code-only-workspace .topbar {
@@ -342,6 +345,7 @@ body.code-only-workspace .view {
 
 body.code-only-workspace #code.view {
   display: block !important;
+  height: 100%;
 }
 
 body.code-only-workspace #code .card {
@@ -349,6 +353,9 @@ body.code-only-workspace #code .card {
   border-radius: 0;
   background: #0a1322;
   padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 body.code-only-workspace #code h3,
@@ -356,6 +363,7 @@ body.code-only-workspace #code > .card > p,
 body.code-only-workspace #code #code-load-form,
 body.code-only-workspace #code .code-files,
 body.code-only-workspace #code .code-resizer,
+body.code-only-workspace #code .code-editor-topbar,
 body.code-only-workspace #code #code-editor-meta,
 body.code-only-workspace #code .code-editor-actions {
   display: none !important;
@@ -365,21 +373,25 @@ body.code-only-workspace #code .code-layout {
   margin-top: 0;
   grid-template-columns: 1fr;
   gap: 0;
+  height: 100%;
+  min-height: 0;
 }
 
 body.code-only-workspace #code .code-editor-wrap {
   border: none;
   border-radius: 0;
   padding: 0;
-  min-height: calc(100vh - 48px);
+  height: 100%;
+  min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 8px var(--terminal-height, 260px);
+  grid-template-rows: minmax(0, 1fr) 8px minmax(140px, var(--terminal-height, 260px));
 }
 
 body.code-only-workspace #code .monaco-editor {
   height: 100%;
   border: none;
   border-radius: 0;
+  min-height: 0;
 }
 
 body.code-only-workspace #code .code-terminal {
@@ -388,7 +400,7 @@ body.code-only-workspace #code .code-terminal {
   border: none;
   border-radius: 0;
   margin-top: 0;
-  min-height: 0;
+  min-height: 140px;
 }
 
 body.code-only-workspace #code .terminal-resizer {
@@ -396,7 +408,7 @@ body.code-only-workspace #code .terminal-resizer {
 }
 
 body.code-only-workspace #code .terminal-xterm {
-  height: auto;
+  height: 100%;
   min-height: 0;
   padding: 8px 10px 6px;
 }
