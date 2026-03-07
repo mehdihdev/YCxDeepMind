@@ -84,9 +84,6 @@ const visualizerOpenFolderButton = document.getElementById("visualizer-open-fold
 const visualizerStats = document.getElementById("visualizer-stats");
 const visualizerGraphMount = document.getElementById("visualizer-graph");
 
-const analyzeForm = document.getElementById("analyze-form");
-const repoPathInput = document.getElementById("repo-path");
-const analysisOutput = document.getElementById("analysis-output");
 const teamModal = document.getElementById("team-modal");
 
 const labels = {
@@ -1961,24 +1958,6 @@ taskForm.addEventListener("submit", async (event) => {
     taskForm.reset();
     await refreshTeamState();
     setStatus("Task added");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
-
-analyzeForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const repoPath = repoPathInput.value.trim();
-  if (!repoPath) return;
-
-  try {
-    setStatus("Analyzing repository...");
-    const data = await apiJson("/api/rde/analyze", {
-      method: "POST",
-      body: JSON.stringify({ repoPath })
-    });
-    analysisOutput.textContent = JSON.stringify(data, null, 2);
-    setStatus("Analysis complete");
   } catch (err) {
     setStatus(err.message, true);
   }
