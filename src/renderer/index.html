@@ -75,7 +75,7 @@
                   <div class="team-panel">
                     <h4>Task Log</h4>
                     <form id="team-task-form" class="stack-form">
-                      <input id="team-task-title" type="text" placeholder="Mount arm and validate pick trajectory" required />
+                      <input id="team-task-title" class="task-log-input" type="text" placeholder="Mount arm and validate pick trajectory" required />
                       <select id="team-task-assignee">
                         <option value="">Unassigned</option>
                       </select>
@@ -281,41 +281,6 @@
               </div>
               <div id="robot-graph" class="robot-graph-canvas"></div>
             </section>
-          <article class="card">
-            <h3>Repository Analyzer (RDE)</h3>
-            <p class="muted">
-              Uses an RDE-style scan endpoint to build quick repo context.
-            </p>
-            <div class="stack-form">
-              <label for="robot-repo-select" class="muted">GitHub Repo (from your account)</label>
-              <div class="repo-combobox">
-                <div class="repo-search-shell">
-                  <span class="repo-search-icon">⌕</span>
-                  <input
-                    id="robot-repo-search"
-                    class="repo-search-input"
-                    type="text"
-                    placeholder="Search repositories..."
-                    autocomplete="off"
-                  />
-                </div>
-                <ul id="robot-repo-suggestions" class="repo-suggestions hidden"></ul>
-              </div>
-              <select id="robot-repo-select" class="repo-select-hidden">
-                <option value="">No repositories loaded</option>
-              </select>
-              <p id="robot-repo-meta" class="muted">Select a repository to bind as this robot's codebase.</p>
-            </div>
-            <form id="analyze-form" class="stack-form">
-              <input id="repo-path" type="text" placeholder="/absolute/path/to/repo" required />
-              <button type="submit">Analyze Repo</button>
-            </form>
-          </article>
-          <article class="card">
-            <h3>Analysis Output</h3>
-            <pre id="analysis-output" class="output">{}</pre>
-          </article>
-        </section>
 
             <aside class="robot-rail robot-right-rail">
               <!-- Discovered Components Panel (shown first) -->
@@ -480,10 +445,10 @@
             <div class="settings-block">
               <h4>Profile</h4>
               <form id="settings-profile-form" class="stack-form">
-                <label for="settings-first-name" class="muted">First name</label>
-                <div class="inline-row">
-                  <input id="settings-first-name" type="text" placeholder="First name" required />
-                  <button type="submit">Save</button>
+                <label for="settings-first-name" class="settings-label">First name</label>
+                <div class="settings-inline-row">
+                  <input id="settings-first-name" class="settings-input" type="text" placeholder="First name" required />
+                  <button type="submit" class="settings-save-btn">Save</button>
                 </div>
               </form>
             </div>
@@ -491,9 +456,9 @@
             <div class="settings-block">
               <h4>Security</h4>
               <form id="settings-password-form" class="stack-form">
-                <label for="settings-password" class="muted">New password</label>
-                <input id="settings-password" type="password" placeholder="Create a strong password" required />
-                <button type="submit" class="secondary-action">Update password</button>
+                <label for="settings-password" class="settings-label">New password</label>
+                <input id="settings-password" class="settings-input" type="password" placeholder="Create a strong password" minlength="8" required />
+                <button type="submit" class="settings-wide-btn">Update password</button>
               </form>
             </div>
 
@@ -502,17 +467,17 @@
                 <h4>GitHub integration</h4>
                 <p id="settings-github-status" class="muted">GitHub connection status unknown.</p>
               </div>
-              <button id="settings-github-disconnect" type="button" class="danger-outline">Disconnect</button>
+              <button id="settings-github-disconnect" type="button" class="danger-outline settings-danger-btn">Disconnect</button>
             </div>
 
             <div class="settings-block danger-zone">
               <h4>Delete account</h4>
               <p class="muted">This will permanently delete your account and all associated data.</p>
-              <button id="settings-delete-account" type="button" class="danger-outline">Delete account</button>
+              <button id="settings-delete-account" type="button" class="danger-outline settings-danger-btn">Delete account</button>
             </div>
 
             <div class="settings-footer-actions">
-              <button id="settings-logout" type="button">Log out</button>
+              <button id="settings-logout" type="button" class="secondary-action">Log out</button>
             </div>
           </article>
         </section>

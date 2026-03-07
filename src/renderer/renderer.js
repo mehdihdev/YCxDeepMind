@@ -1988,24 +1988,6 @@ taskForm.addEventListener("submit", async (event) => {
   }
 });
 
-analyzeForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const repoPath = repoPathInput.value.trim();
-  if (!repoPath) return;
-
-  try {
-    setStatus("Analyzing repository...");
-    const data = await apiJson("/api/rde/analyze", {
-      method: "POST",
-      body: JSON.stringify({ repoPath })
-    });
-    analysisOutput.textContent = JSON.stringify(data, null, 2);
-    setStatus("Analysis complete");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
-
 window.forgeAPI
   .getAppMeta()
   .then((appMeta) => {
