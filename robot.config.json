@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2026-03-07T20:05:37.879Z",
+  "generatedBy": "forge-rde",
+  "robot": {
+    "name": "mehdihdev/YCxDeepMind",
+    "type": "manipulator"
+  },
+  "jetson": {
+    "ip": "192.168.1.100",
+    "user": "jetson"
+  },
+  "servers": {
+    "arm": {
+      "port": 8765,
+      "enabled": true
+    },
+    "camera": {
+      "port": 8766,
+      "enabled": false
+    }
+  },
+  "arms": [
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/calibration/follower.json",
+      "name": "follower.json",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/calibration/leader.json",
+      "name": "leader.json",
+      "type": "leader"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/deploy.sh",
+      "name": "deploy.sh",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/forge-integration/robot-graph-schema.json",
+      "name": "robot-graph-schema.json",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/jetson/arm_server.py",
+      "name": "arm_server.py",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/jetson/camera_server.py",
+      "name": "camera_server.py",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/jetson/requirements.txt",
+      "name": "requirements.txt",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/README.md",
+      "name": "README.md",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/robot.config.json",
+      "name": "robot.config.json",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/scripts/discover_devices.py",
+      "name": "discover_devices.py",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/scripts/install.sh",
+      "name": "install.sh",
+      "type": "follower"
+    },
+    {
+      "id": "source:repo:file:examplerepos/forge-rde-lerobot/scripts/start-servers.sh",
+      "name": "start-servers.sh",
+      "type": "follower"
+    }
+  ],
+  "cameras": [],
+  "selectedParts": [
+    {
+      "name": "SVPRO 1080P 60FPS USB Camera Module with Dual M12 Lens Sync 3840x1080 ...",
+      "requirement": "camera with usb c for robot"
+    }
+  ]
+}

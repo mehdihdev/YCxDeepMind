@@ -687,6 +687,7 @@ async function apiJson(path, options = {}) {
   return data;
 }
 
+<<<<<<< Updated upstream
 function inferLanguage(filePath) {
   const lower = String(filePath || "").toLowerCase();
   if (lower.endsWith(".ts")) return "typescript";
@@ -702,6 +703,15 @@ function inferLanguage(filePath) {
   if (lower.endsWith(".sql")) return "sql";
   return "plaintext";
 }
+=======
+const robotController = createRobotController({
+  elements,
+  setStatus,
+  getTeamMembers: () => teamController.getMembers(),
+  saveTaskToLog: ({ title, assigneeUserId }) => teamController.createTask({ title, assigneeUserId }),
+  onComponentsDiscovered: (components) => liveRobotController.onComponentsDiscovered(components)
+});
+>>>>>>> Stashed changes
 
 async function ensureMonacoLoaded() {
   if (monacoLoaded) return true;

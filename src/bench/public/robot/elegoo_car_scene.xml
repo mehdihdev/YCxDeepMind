@@ -1,0 +1,107 @@
+<mujoco model="elegoo_smart_car_v4 scene">
+  <include file="elegoo_car.xml"/>
+
+  <statistic center="0 0 0.1" extent="0.8"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-25"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+      markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="10 10" reflectance="0.2"/>
+
+    <!-- Line following track materials -->
+    <material name="track_white" rgba="0.95 0.95 0.95 1"/>
+    <material name="track_black" rgba="0.05 0.05 0.05 1"/>
+
+    <!-- Obstacle materials -->
+    <material name="obstacle_red" rgba="0.8 0.2 0.2 1"/>
+    <material name="obstacle_blue" rgba="0.2 0.2 0.8 1"/>
+    <material name="obstacle_green" rgba="0.2 0.7 0.2 1"/>
+    <material name="wall_mat" rgba="0.6 0.5 0.4 1"/>
+    <material name="target_mat" rgba="1.0 0.8 0.0 0.8"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 2" dir="0 0 -1" directional="true" diffuse="0.8 0.8 0.8"/>
+    <light pos="1 1 1.5" dir="-0.5 -0.5 -1" diffuse="0.3 0.3 0.3"/>
+
+    <!-- Ground plane -->
+    <geom name="floor" size="0 0 0.01" type="plane" material="groundplane"/>
+
+    <!-- ================== LINE FOLLOWING TRACK ================== -->
+    <!-- Simple oval track with black line on white background -->
+
+    <!-- White track base -->
+    <geom name="track_base" type="box" size="0.6 0.4 0.001" pos="0 0 0.001" material="track_white"/>
+
+    <!-- Black line - straight sections -->
+    <geom name="line_top" type="box" size="0.3 0.01 0.0015" pos="0 0.25 0.002" material="track_black"/>
+    <geom name="line_bottom" type="box" size="0.3 0.01 0.0015" pos="0 -0.25 0.002" material="track_black"/>
+
+    <!-- Black line - curved sections (approximated with segments) -->
+    <!-- Left curve -->
+    <geom name="curve_l1" type="box" size="0.05 0.01 0.0015" pos="-0.32 0.22 0.002" euler="0 0 0.4" material="track_black"/>
+    <geom name="curve_l2" type="box" size="0.05 0.01 0.0015" pos="-0.38 0.15 0.002" euler="0 0 0.8" material="track_black"/>
+    <geom name="curve_l3" type="box" size="0.05 0.01 0.0015" pos="-0.40 0.05 0.002" euler="0 0 1.2" material="track_black"/>
+    <geom name="curve_l4" type="box" size="0.05 0.01 0.0015" pos="-0.40 -0.05 0.002" euler="0 0 1.9" material="track_black"/>
+    <geom name="curve_l5" type="box" size="0.05 0.01 0.0015" pos="-0.38 -0.15 0.002" euler="0 0 2.3" material="track_black"/>
+    <geom name="curve_l6" type="box" size="0.05 0.01 0.0015" pos="-0.32 -0.22 0.002" euler="0 0 2.7" material="track_black"/>
+
+    <!-- Right curve -->
+    <geom name="curve_r1" type="box" size="0.05 0.01 0.0015" pos="0.32 0.22 0.002" euler="0 0 -0.4" material="track_black"/>
+    <geom name="curve_r2" type="box" size="0.05 0.01 0.0015" pos="0.38 0.15 0.002" euler="0 0 -0.8" material="track_black"/>
+    <geom name="curve_r3" type="box" size="0.05 0.01 0.0015" pos="0.40 0.05 0.002" euler="0 0 -1.2" material="track_black"/>
+    <geom name="curve_r4" type="box" size="0.05 0.01 0.0015" pos="0.40 -0.05 0.002" euler="0 0 -1.9" material="track_black"/>
+    <geom name="curve_r5" type="box" size="0.05 0.01 0.0015" pos="0.38 -0.15 0.002" euler="0 0 -2.3" material="track_black"/>
+    <geom name="curve_r6" type="box" size="0.05 0.01 0.0015" pos="0.32 -0.22 0.002" euler="0 0 -2.7" material="track_black"/>
+
+    <!-- ================== OBSTACLES ================== -->
+    <!-- Movable obstacles for obstacle avoidance testing -->
+
+    <body name="obstacle_1" pos="0.25 0 0.025">
+      <joint type="free"/>
+      <geom name="obs1_geom" type="box" size="0.03 0.03 0.025" material="obstacle_red" mass="0.1"/>
+    </body>
+
+    <body name="obstacle_2" pos="-0.2 0.15 0.025">
+      <joint type="free"/>
+      <geom name="obs2_geom" type="cylinder" size="0.025 0.025" material="obstacle_blue" mass="0.1"/>
+    </body>
+
+    <body name="obstacle_3" pos="0.1 -0.15 0.03">
+      <joint type="free"/>
+      <geom name="obs3_geom" type="sphere" size="0.03" material="obstacle_green" mass="0.08"/>
+    </body>
+
+    <!-- ================== ARENA WALLS ================== -->
+    <!-- Optional walls to keep car contained -->
+
+    <geom name="wall_north" type="box" size="0.7 0.02 0.05" pos="0 0.5 0.05" material="wall_mat"/>
+    <geom name="wall_south" type="box" size="0.7 0.02 0.05" pos="0 -0.5 0.05" material="wall_mat"/>
+    <geom name="wall_east" type="box" size="0.02 0.5 0.05" pos="0.7 0 0.05" material="wall_mat"/>
+    <geom name="wall_west" type="box" size="0.02 0.5 0.05" pos="-0.7 0 0.05" material="wall_mat"/>
+
+    <!-- ================== TARGET ZONES ================== -->
+    <!-- Goal areas for navigation tasks -->
+
+    <geom name="target_zone" type="cylinder" size="0.1 0.002" pos="0.5 0 0.002" material="target_mat"/>
+    <site name="target_site" pos="0.5 0 0.01" size="0.01" rgba="1 1 0 0.5"/>
+
+    <!-- Start zone -->
+    <geom name="start_zone" type="cylinder" size="0.1 0.002" pos="-0.5 0 0.002" material="obstacle_green" rgba="0.2 0.8 0.2 0.5"/>
+    <site name="start_site" pos="-0.5 0 0.01" size="0.01" rgba="0 1 0 0.5"/>
+  </worldbody>
+
+  <!-- External cameras for monitoring -->
+  <worldbody>
+    <camera name="top_view" pos="0 0 1.5" xyaxes="1 0 0 0 1 0" fovy="60"/>
+    <camera name="side_view" pos="1 0 0.3" xyaxes="0 -1 0 0 0 1" fovy="60"/>
+    <camera name="corner_view" pos="0.8 0.8 0.5" xyaxes="-0.707 0.707 0 0 0 1" fovy="60"/>
+  </worldbody>
+</mujoco>

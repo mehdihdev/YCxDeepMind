@@ -332,16 +332,23 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
     elements.robotRequirementList.innerHTML = requirements
       .map((requirement) => {
         const activeClass = requirement.id === activeRequirementId ? " active" : "";
+        const optionCount = (requirement.options || []).length;
+        const statusClass = requirement.status === "resolved" ? "robot-pill-success" :
+                           requirement.status === "options_ready" ? "robot-pill-warn" : "";
+        const statusLabel = requirement.status === "resolved" ? "RESOLVED" :
+                           requirement.status === "options_ready" ? `${optionCount} OPTIONS` :
+                           "OPEN";
         return `<article class="robot-list-card${activeClass}" data-requirement-id="${escapeHtml(requirement.id)}">
-          <p class="robot-board-eyebrow">${escapeHtml(requirement.status || "open")}</p>
+          <div class="robot-requirement-header">
+            <span class="robot-pill ${statusClass}">${escapeHtml(statusLabel)}</span>
+            <button type="button" class="robot-delete-btn" data-delete-requirement="${escapeHtml(requirement.id)}" title="Delete requirement">×</button>
+          </div>
           <h4>${escapeHtml(requirement.title)}</h4>
           <p>${escapeHtml(requirement.description || "")}</p>
-          <p class="robot-discovery-meta">Options: ${escapeHtml(String((requirement.options || []).length))} • Source: ${escapeHtml(
-            requirement.source || "user"
-          )}</p>
+          <p class="robot-discovery-meta">Source: ${escapeHtml(requirement.source || "user")}</p>
           <div class="actions mt-3">
-            <button type="button" data-discover-requirement="${escapeHtml(requirement.id)}">Discover Options</button>
-            <button type="button" class="secondary-action" data-focus-requirement="${escapeHtml(requirement.id)}">View Options</button>
+            <button type="button" data-discover-requirement="${escapeHtml(requirement.id)}">${optionCount ? "Refresh Options" : "Discover Options"}</button>
+            ${optionCount ? `<button type="button" class="secondary-action" data-focus-requirement="${escapeHtml(requirement.id)}">View ${optionCount} Options</button>` : ""}
           </div>
         </article>`;
       })
@@ -374,17 +381,41 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
       return;
     }
 
-    elements.robotOptionList.innerHTML = requirement.options
-      .map((option) => {
+    // Header showing current requirement
+    let headerHtml = `
+      <div class="robot-option-header">
+        <div>
+          <p class="robot-board-eyebrow">VIEWING OPTIONS FOR</p>
+          <h4>${escapeHtml(requirement.title)}</h4>
+        </div>
+        ${requirement.status === "resolved" ? `
+          <button type="button" class="danger-outline" data-deselect-requirement="${escapeHtml(requirement.id)}">Unbind Selection</button>
+        ` : ""}
+      </div>
+    `;
+
+    elements.robotOptionList.innerHTML = headerHtml + requirement.options
+      .map((option, index) => {
         const selectedClass = option.selected ? " selected" : "";
+        const isPdf = option.url && (option.url.toLowerCase().endsWith(".pdf") || option.isPdf);
+        const scoreDisplay = option.score !== undefined ? `${Math.round(option.score * 100)}%` : "—";
+        const scoreClass = option.score >= 0.8 ? "score-high" : option.score >= 0.5 ? "score-mid" : "score-low";
+
         return `<article class="robot-option-card${selectedClass}">
-          <p class="robot-board-eyebrow">${escapeHtml(option.selected ? "SELECTED" : "OPTION")}</p>
+          <div class="robot-option-top">
+            <span class="robot-option-rank">#${index + 1}</span>
+            <span class="robot-option-score ${scoreClass}">${escapeHtml(scoreDisplay)} match</span>
+            ${option.selected ? '<span class="robot-pill robot-pill-success">SELECTED</span>' : ""}
+          </div>
           <h4>${escapeHtml(option.title)}</h4>
-          <p>${escapeHtml(option.fitSummary || option.excerpt || "")}</p>
-          <p class="robot-discovery-meta">Score ${escapeHtml(String(option.score ?? "n/a"))}</p>
+          <p class="robot-option-summary">${escapeHtml(option.fitSummary || option.excerpt || "")}</p>
           ${
             option.url
-              ? `<p class="robot-discovery-meta"><a href="${escapeHtml(option.url)}" target="_blank" rel="noreferrer">Open source / datasheet</a></p>`
+              ? `<div class="robot-datasheet-link">
+                  <a href="${escapeHtml(option.url)}" target="_blank" rel="noreferrer" class="${isPdf ? "datasheet-pdf" : "datasheet-web"}">
+                    ${isPdf ? "📄 View Datasheet (PDF)" : "🔗 View Source"}
+                  </a>
+                </div>`
               : ""
           }
           ${
@@ -396,13 +427,17 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
           }
           ${
             (option.risks || []).length
-              ? `<ul class="robot-check-list">${option.risks.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("")}</ul>`
+              ? `<div class="robot-option-risks">
+                  <p class="robot-risks-label">Considerations:</p>
+                  <ul class="robot-check-list">${option.risks.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("")}</ul>
+                </div>`
               : ""
           }
           <div class="actions mt-3">
-            <button type="button" data-select-option="${escapeHtml(option.id)}" data-requirement-id="${escapeHtml(
-              requirement.id
-            )}">${option.selected ? "Selected" : "Bind Into Graph"}</button>
+            ${option.selected
+              ? `<button type="button" class="secondary-action" disabled>Currently Selected</button>`
+              : `<button type="button" data-select-option="${escapeHtml(option.id)}" data-requirement-id="${escapeHtml(requirement.id)}">Select This Option</button>`
+            }
           </div>
         </article>`;
       })
@@ -551,6 +586,162 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
     `;
   }
 
+  function renderGeneratedFiles() {
+    const container = document.getElementById("robot-generated-files");
+    if (!container) return;
+
+    const workspace = activeWorkspace();
+    const bindings = workspace.selectedOptionBindings || [];
+    const source = currentSourcePayload();
+
+    if (!bindings.length) {
+      container.innerHTML = `
+        <p class="muted">Select parts from the requirement queue to generate robot config files.</p>
+        <div class="robot-demo-card" style="margin-top: 12px;">
+          <p class="muted" style="font-size: 11px;">When you select a part:</p>
+          <ul style="margin-top: 8px; font-size: 12px; color: var(--color-slate-300);">
+            <li>• robot-parts.json is generated</li>
+            <li>• robot.config.json is updated</li>
+            <li>• Files are written to your workspace</li>
+          </ul>
+        </div>
+      `;
+      return;
+    }
+
+    // Show generated files and selected parts
+    const targetPath = source?.sourcePath || (source?.repoFullName ? `~/.forge-rde/robot-workspaces/exports/${source.repoFullName.replace("/", "_")}` : "workspace");
+
+    let html = `
+      <div class="robot-demo-card" style="margin-bottom: 12px;">
+        <h4 style="margin: 0; color: var(--color-emerald-300);">Files Generated</h4>
+        <p class="muted" style="font-size: 11px; margin-top: 4px;">Written to: ${escapeHtml(targetPath)}</p>
+        <div style="margin-top: 12px; display: grid; gap: 8px;">
+          <div class="robot-file-item" data-view-file="robot-parts.json">
+            <span style="color: var(--color-sky-300);">robot-parts.json</span>
+            <span class="muted" style="font-size: 11px;">${bindings.length} part${bindings.length > 1 ? "s" : ""}</span>
+          </div>
+          <div class="robot-file-item" data-view-file="robot.config.json">
+            <span style="color: var(--color-sky-300);">robot.config.json</span>
+            <span class="muted" style="font-size: 11px;">Connection & setup</span>
+          </div>
+        </div>
+        <button type="button" id="robot-view-files-btn" style="margin-top: 12px; width: 100%;">View Generated Files</button>
+      </div>
+      <h4 style="margin: 16px 0 8px 0; font-size: 14px;">Selected Parts</h4>
+    `;
+
+    for (const binding of bindings) {
+      const requirement = workspace.requirements?.find((r) => r.id === binding.requirementId);
+      const option = requirement?.options?.find((o) => o.id === binding.optionId);
+      html += `
+        <div class="robot-demo-card" style="margin-bottom: 8px;">
+          <p style="margin: 0; font-size: 12px; color: var(--color-slate-200);">${escapeHtml(binding.title || option?.title || "Part")}</p>
+          <p class="muted" style="font-size: 11px; margin-top: 4px;">For: ${escapeHtml(requirement?.title || "requirement")}</p>
+        </div>
+      `;
+    }
+
+    container.innerHTML = html;
+
+    // Attach view files button handler
+    const viewFilesBtn = document.getElementById("robot-view-files-btn");
+    if (viewFilesBtn) {
+      viewFilesBtn.addEventListener("click", () => viewGeneratedFiles());
+    }
+  }
+
+  async function viewGeneratedFiles() {
+    const source = currentSourcePayload();
+    if (!source) {
+      setStatus("No workspace selected", true);
+      return;
+    }
+
+    try {
+      setStatus("Loading generated files...");
+      const query = source.sourcePath
+        ? `sourcePath=${encodeURIComponent(source.sourcePath)}`
+        : `repoFullName=${encodeURIComponent(source.repoFullName)}`;
+
+      const data = await apiJson(`/api/robot/generated-files?${query}`);
+
+      if (!data.hasFiles) {
+        setStatus("No files generated yet. Select a part first.", true);
+        return;
+      }
+
+      // Show modal with file contents
+      showGeneratedFilesModal(data);
+      setStatus("Generated files loaded");
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  function showGeneratedFilesModal(data) {
+    // Remove existing modal if any
+    const existingModal = document.getElementById("robot-files-modal");
+    if (existingModal) {
+      existingModal.remove();
+    }
+
+    const modal = document.createElement("div");
+    modal.id = "robot-files-modal";
+    modal.className = "modal";
+    modal.innerHTML = `
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <div class="modal-card" style="max-width: 800px; max-height: 80vh; overflow: auto;">
+        <div class="modal-title-row">
+          <h3>Generated Files</h3>
+          <button type="button" data-close-modal="true" class="secondary-action">Close</button>
+        </div>
+        <p class="muted" style="margin-top: 8px;">These files were written to: ${escapeHtml(data.targetPath)}</p>
+
+        <div style="margin-top: 24px;">
+          <h4 style="color: var(--color-sky-300);">robot-parts.json</h4>
+          <pre class="output" style="margin-top: 8px; max-height: 300px; overflow: auto;">${
+            data.files["robot-parts.json"]
+              ? escapeHtml(JSON.stringify(data.files["robot-parts.json"], null, 2))
+              : '<span class="muted">File not generated yet</span>'
+          }</pre>
+        </div>
+
+        <div style="margin-top: 24px;">
+          <h4 style="color: var(--color-sky-300);">robot.config.json</h4>
+          <pre class="output" style="margin-top: 8px; max-height: 300px; overflow: auto;">${
+            data.files["robot.config.json"]
+              ? escapeHtml(JSON.stringify(data.files["robot.config.json"], null, 2))
+              : '<span class="muted">File not generated yet</span>'
+          }</pre>
+        </div>
+
+        <div style="margin-top: 24px; display: flex; gap: 12px;">
+          <button type="button" id="robot-copy-config-btn">Copy robot.config.json</button>
+          <button type="button" class="secondary-action" data-close-modal="true">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close modal handlers
+    modal.addEventListener("click", (event) => {
+      if (event.target instanceof HTMLElement && event.target.dataset.closeModal === "true") {
+        modal.remove();
+      }
+    });
+
+    // Copy config button
+    const copyBtn = modal.querySelector("#robot-copy-config-btn");
+    if (copyBtn && data.files["robot.config.json"]) {
+      copyBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(JSON.stringify(data.files["robot.config.json"], null, 2));
+        setStatus("robot.config.json copied to clipboard");
+      });
+    }
+  }
+
   function rememberGraphState() {
     if (!graphNetwork) return;
     try {
@@ -643,7 +834,10 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
         interaction: {
           hover: true,
           keyboard: true,
-          navigationButtons: true
+          navigationButtons: true,
+          tooltipDelay: 200,
+          zoomSpeed: 0.8,
+          dragView: true
         },
         layout: {
           improvedLayout: true,
@@ -651,32 +845,53 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
         },
         nodes: {
           borderWidth: 2,
+          borderWidthSelected: 3,
           shadow: {
             enabled: true,
-            color: "rgba(15, 23, 42, 0.45)",
-            size: 18,
+            color: "rgba(15, 23, 42, 0.55)",
+            size: 20,
             x: 0,
-            y: 10
+            y: 12
+          },
+          scaling: {
+            label: { enabled: true, min: 12, max: 18 }
+          },
+          chosen: {
+            node: (values, id, selected, hovering) => {
+              if (hovering || selected) {
+                values.shadowSize = 28;
+                values.borderWidth = 3;
+              }
+            }
           }
         },
         edges: {
-          width: 1.2
+          width: 1.5,
+          hoverWidth: 2.5,
+          selectionWidth: 2.5,
+          smooth: {
+            type: "continuous",
+            roundness: 0.5
+          }
         },
         physics: {
           enabled: physicsEnabled,
           solver: "forceAtlas2Based",
           stabilization: {
             enabled: true,
-            iterations: graphHasFitted ? 120 : 220,
-            fit: !graphHasFitted
+            iterations: graphHasFitted ? 120 : 250,
+            fit: !graphHasFitted,
+            updateInterval: 25
           },
           forceAtlas2Based: {
-            gravitationalConstant: -42,
-            centralGravity: 0.01,
-            springLength: 150,
-            springConstant: 0.08
+            gravitationalConstant: -50,
+            centralGravity: 0.008,
+            springLength: 160,
+            springConstant: 0.06,
+            damping: 0.5
           },
-          minVelocity: 0.75
+          minVelocity: 0.5,
+          maxVelocity: 35
         }
       }
     );
@@ -706,13 +921,16 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
         graphNetwork?.moveTo({
           position: graphView.position,
           scale: graphView.scale || 1,
-          animation: false
+          animation: {
+            duration: 400,
+            easingFunction: "easeOutQuad"
+          }
         });
       } else {
         graphNetwork?.fit({
           animation: {
-            duration: 350,
-            easingFunction: "easeInOutQuad"
+            duration: 600,
+            easingFunction: "easeOutCubic"
           }
         });
       }
@@ -752,6 +970,7 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
     renderVerifierRuns();
     renderTaskSuggestions();
     renderNodeDetail();
+    renderGeneratedFiles();
     await renderGraph();
 
     // Notify about discovered robot components
@@ -865,6 +1084,36 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
     });
     activeRequirementId = requirementId;
     await applyWorkspaceResponse(data);
+
+    // Return whether files were written (agentic action)
+    return {
+      filesWritten: data.filesWritten || false,
+      optionTitle: data.option?.title || "part"
+    };
+  }
+
+  async function deselectOption(requirementId) {
+    const source = currentSourcePayload();
+    if (!source) throw new Error("Select a repo or folder first.");
+    const data = await apiJson(`/api/robot/requirements/${encodeURIComponent(requirementId)}/deselect`, {
+      method: "POST",
+      body: JSON.stringify(source)
+    });
+    activeRequirementId = requirementId;
+    await applyWorkspaceResponse(data);
+  }
+
+  async function deleteRequirement(requirementId) {
+    const source = currentSourcePayload();
+    if (!source) throw new Error("Select a repo or folder first.");
+    const data = await apiJson(`/api/robot/requirements/${encodeURIComponent(requirementId)}`, {
+      method: "DELETE",
+      body: JSON.stringify(source)
+    });
+    if (activeRequirementId === requirementId) {
+      activeRequirementId = "";
+    }
+    await applyWorkspaceResponse(data);
   }
 
   async function runVerifier() {
@@ -930,7 +1179,8 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
       try {
         setStatus("Syncing robot workspace from folder...");
         await syncWorkspace();
-        setStatus("Robot workspace synced");
+        const nodeCount = activeWorkspace().graph?.nodes?.length || 0;
+        setStatus(`Robot workspace synced - ${nodeCount} components`);
       } catch (error) {
         setStatus(error.message, true);
       }
@@ -942,25 +1192,14 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
       try {
         setStatus("Syncing robot workspace...");
         await syncWorkspace();
-        setStatus("Robot workspace synced");
+        const nodeCount = activeWorkspace().graph?.nodes?.length || 0;
+        setStatus(`Robot workspace synced - ${nodeCount} components`);
       } catch (error) {
         setStatus(error.message, true);
       }
     });
   }
 
-  if (elements.robotPlanForm) {
-    elements.robotPlanForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try {
-        setStatus("Planning mission...");
-        await runPlanner();
-        setStatus("Mission board updated");
-      } catch (error) {
-        setStatus(error.message, true);
-      }
-    });
-  }
 
   if (elements.robotRequirementForm) {
     elements.robotRequirementForm.addEventListener("submit", async (event) => {
@@ -976,35 +1215,54 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
     });
   }
 
-  if (elements.robotVerifyForm) {
-    elements.robotVerifyForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try {
-        setStatus("Running verifier...");
-        await runVerifier();
-        setStatus("Verifier completed");
-      } catch (error) {
-        setStatus(error.message, true);
-      }
-    });
-  }
 
   if (elements.robotRequirementList) {
     elements.robotRequirementList.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      const focusId = String(target.dataset.focusRequirement || "");
-      if (focusId) {
+
+      // Delete requirement
+      const deleteBtn = target.closest("[data-delete-requirement]");
+      if (deleteBtn) {
+        const deleteId = String(deleteBtn.dataset.deleteRequirement || "");
+        if (!deleteId) return;
+        if (!window.confirm("Delete this requirement and all its options?")) return;
+        setStatus("Deleting requirement...");
+        deleteRequirement(deleteId)
+          .then(() => setStatus("Requirement deleted"))
+          .catch((error) => setStatus(error.message, true));
+        return;
+      }
+
+      // Focus on requirement to show options
+      const focusBtn = target.closest("[data-focus-requirement]");
+      if (focusBtn) {
+        const focusId = String(focusBtn.dataset.focusRequirement || "");
+        if (!focusId) return;
         activeRequirementId = focusId;
         renderRequirementList();
         renderOptionList();
+        // Scroll to the options panel
+        const optionPanel = elements.robotOptionList?.closest(".robot-panel");
+        if (optionPanel) {
+          optionPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        setStatus("Showing options for requirement");
         return;
       }
-      const discoverId = String(target.dataset.discoverRequirement || "");
-      if (discoverId) {
+
+      // Discover options
+      const discoverBtn = target.closest("[data-discover-requirement]");
+      if (discoverBtn) {
+        const discoverId = String(discoverBtn.dataset.discoverRequirement || "");
+        if (!discoverId) return;
         setStatus("Discovering part options...");
         discoverRequirement(discoverId)
-          .then(() => setStatus("Part options updated"))
+          .then(() => {
+            const req = (activeWorkspace().requirements || []).find(r => r.id === discoverId);
+            const optCount = req?.options?.length || 0;
+            setStatus(`Found ${optCount} part options`);
+          })
           .catch((error) => setStatus(error.message, true));
       }
     });
@@ -1014,21 +1272,52 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
     elements.robotOptionList.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      const discoverId = String(target.dataset.discoverRequirement || "");
-      if (discoverId) {
-        setStatus("Discovering part options...");
-        discoverRequirement(discoverId)
-          .then(() => setStatus("Part options updated"))
+
+      // Deselect / unbind option
+      const deselectBtn = target.closest("[data-deselect-requirement]");
+      if (deselectBtn) {
+        const deselectId = String(deselectBtn.dataset.deselectRequirement || "");
+        if (!deselectId) return;
+        setStatus("Unbinding selected option...");
+        deselectOption(deselectId)
+          .then(() => setStatus("Option unbound from graph"))
           .catch((error) => setStatus(error.message, true));
         return;
       }
-      const optionId = String(target.dataset.selectOption || "");
-      const requirementId = String(target.dataset.requirementId || "");
-      if (!optionId || !requirementId) return;
-      setStatus("Binding selected option into graph...");
-      selectOption(requirementId, optionId)
-        .then(() => setStatus("Part bound into robot graph"))
-        .catch((error) => setStatus(error.message, true));
+
+      // Discover options
+      const discoverBtn = target.closest("[data-discover-requirement]");
+      if (discoverBtn) {
+        const discoverId = String(discoverBtn.dataset.discoverRequirement || "");
+        if (!discoverId) return;
+        setStatus("Discovering part options...");
+        discoverRequirement(discoverId)
+          .then(() => {
+            const req = (activeWorkspace().requirements || []).find(r => r.id === discoverId);
+            const optCount = req?.options?.length || 0;
+            setStatus(`Found ${optCount} part options`);
+          })
+          .catch((error) => setStatus(error.message, true));
+        return;
+      }
+
+      // Select option
+      const selectBtn = target.closest("[data-select-option]");
+      if (selectBtn) {
+        const optionId = String(selectBtn.dataset.selectOption || "");
+        const requirementId = String(selectBtn.dataset.requirementId || "");
+        if (!optionId || !requirementId) return;
+        setStatus("Binding selected option into graph...");
+        selectOption(requirementId, optionId)
+          .then((result) => {
+            if (result.filesWritten) {
+              setStatus(`${result.optionTitle} selected - wrote config files`);
+            } else {
+              setStatus(`${result.optionTitle} bound to graph`);
+            }
+          })
+          .catch((error) => setStatus(error.message, true));
+      }
     });
   }
 
@@ -1041,21 +1330,6 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
       setStatus("Updating node component...");
       updateNodeComponent(nodeId)
         .then(() => setStatus("Node component updated"))
-        .catch((error) => setStatus(error.message, true));
-    });
-  }
-
-  if (elements.robotTaskSuggestions) {
-    elements.robotTaskSuggestions.addEventListener("click", (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      const taskId = String(target.dataset.saveTask || "");
-      if (!taskId) return;
-      const select = elements.robotTaskSuggestions.querySelector(`[data-task-assignee="${CSS.escape(taskId)}"]`);
-      const assigneeUserId = String(select?.value || "");
-      setStatus("Saving suggested task to Task Log...");
-      saveSuggestedTask(taskId, assigneeUserId)
-        .then(() => setStatus("Suggested task saved to Task Log"))
         .catch((error) => setStatus(error.message, true));
     });
   }
