@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Forge RDE</title>
+    <link rel="stylesheet" href="/vendor/xterm/css/xterm.css" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -110,6 +111,22 @@
                     <button id="repos-refresh" type="button">Refresh Repos</button>
                   </div>
                 </div>
+                <div class="repo-combobox repo-combobox-inline">
+                  <div class="repo-search-shell">
+                    <span class="repo-search-icon">⌕</span>
+                    <input
+                      id="workspace-repo-search"
+                      class="repo-search-input"
+                      type="text"
+                      placeholder="Search your repositories..."
+                      autocomplete="off"
+                    />
+                  </div>
+                  <ul id="workspace-repo-suggestions" class="repo-suggestions hidden"></ul>
+                </div>
+                <select id="workspace-repo-select" class="repo-select-hidden">
+                  <option value="">No repositories loaded</option>
+                </select>
                 <div id="repo-grid" class="repo-grid"></div>
                 <div class="repo-more-wrap">
                   <button id="repo-show-more" type="button" class="secondary-action">Show more</button>
@@ -125,7 +142,20 @@
             <p class="muted">Browse local repository files and inspect code in an embedded editor.</p>
             <form id="code-load-form" class="stack-form">
               <label for="code-repo-select" class="muted">Source repository</label>
-              <select id="code-repo-select">
+              <div class="repo-combobox">
+                <div class="repo-search-shell">
+                  <span class="repo-search-icon">⌕</span>
+                  <input
+                    id="code-repo-search"
+                    class="repo-search-input"
+                    type="text"
+                    placeholder="Search repositories..."
+                    autocomplete="off"
+                  />
+                </div>
+                <ul id="code-repo-suggestions" class="repo-suggestions hidden"></ul>
+              </div>
+              <select id="code-repo-select" class="repo-select-hidden">
                 <option value="">No repositories loaded</option>
               </select>
               <div class="actions">
@@ -133,12 +163,6 @@
                 <button id="code-open-folder" type="button" class="secondary-action">Open Folder…</button>
               </div>
             </form>
-            <div class="code-toolbar">
-              <button id="code-open-vscode" type="button" class="secondary-action">Open in VSCode</button>
-              <button id="code-open-new-window" type="button" class="secondary-action">
-                Open in New Window
-              </button>
-            </div>
             <div class="code-layout">
               <aside class="code-files">
                 <h4>Files</h4>
@@ -146,8 +170,34 @@
               </aside>
               <div id="code-resizer" class="code-resizer" role="separator" aria-orientation="vertical"></div>
               <div class="code-editor-wrap">
-                <p id="code-editor-meta" class="muted">Load a repository and select a file.</p>
+                <div class="code-editor-topbar">
+                  <p id="code-editor-meta" class="muted">Load a repository and select a file.</p>
+                  <div class="code-editor-actions">
+                    <button id="code-open-new-window" type="button" class="secondary-action compact-btn">
+                      Open in New Window
+                    </button>
+                    <button id="code-open-vscode" type="button" class="secondary-action compact-btn">
+                      Open in VSCode
+                    </button>
+                  </div>
+                </div>
                 <div id="monaco-editor" class="monaco-editor"></div>
+                <div
+                  id="terminal-resizer"
+                  class="terminal-resizer"
+                  role="separator"
+                  aria-orientation="horizontal"
+                ></div>
+                <section id="code-terminal" class="code-terminal">
+                  <div class="code-terminal-header">
+                    <h4>Terminal</h4>
+                    <div class="actions">
+                      <button id="terminal-clear" type="button" class="secondary-action">Clear</button>
+                      <button id="terminal-restart" type="button" class="secondary-action">Restart</button>
+                    </div>
+                  </div>
+                  <div id="terminal-xterm" class="terminal-xterm"></div>
+                </section>
               </div>
             </div>
           </article>
@@ -159,7 +209,20 @@
             <p class="muted">RDE-style file dependency graph generated from your selected repository.</p>
             <form id="visualizer-load-form" class="stack-form">
               <label for="visualizer-repo-select" class="muted">Source repository</label>
-              <select id="visualizer-repo-select">
+              <div class="repo-combobox">
+                <div class="repo-search-shell">
+                  <span class="repo-search-icon">⌕</span>
+                  <input
+                    id="visualizer-repo-search"
+                    class="repo-search-input"
+                    type="text"
+                    placeholder="Search repositories..."
+                    autocomplete="off"
+                  />
+                </div>
+                <ul id="visualizer-repo-suggestions" class="repo-suggestions hidden"></ul>
+              </div>
+              <select id="visualizer-repo-select" class="repo-select-hidden">
                 <option value="">No repositories loaded</option>
               </select>
               <div class="actions">
@@ -180,7 +243,20 @@
             </p>
             <div class="stack-form">
               <label for="robot-repo-select" class="muted">GitHub Repo (from your account)</label>
-              <select id="robot-repo-select">
+              <div class="repo-combobox">
+                <div class="repo-search-shell">
+                  <span class="repo-search-icon">⌕</span>
+                  <input
+                    id="robot-repo-search"
+                    class="repo-search-input"
+                    type="text"
+                    placeholder="Search repositories..."
+                    autocomplete="off"
+                  />
+                </div>
+                <ul id="robot-repo-suggestions" class="repo-suggestions hidden"></ul>
+              </div>
+              <select id="robot-repo-select" class="repo-select-hidden">
                 <option value="">No repositories loaded</option>
               </select>
               <p id="robot-repo-meta" class="muted">Select a repository to bind as this robot's codebase.</p>
@@ -221,7 +297,20 @@
               <div class="team-panel">
                 <form id="artifact-generate-form" class="stack-form">
                   <label for="artifact-repo-select" class="muted">Source repository</label>
-                  <select id="artifact-repo-select">
+                  <div class="repo-combobox">
+                    <div class="repo-search-shell">
+                      <span class="repo-search-icon">⌕</span>
+                      <input
+                        id="artifact-repo-search"
+                        class="repo-search-input"
+                        type="text"
+                        placeholder="Search repositories..."
+                        autocomplete="off"
+                      />
+                    </div>
+                    <ul id="artifact-repo-suggestions" class="repo-suggestions hidden"></ul>
+                  </div>
+                  <select id="artifact-repo-select" class="repo-select-hidden">
                     <option value="">No repositories loaded</option>
                   </select>
                   <button type="submit">Generate Integration Diagram</button>
@@ -331,6 +420,8 @@
       </div>
     </div>
 
+    <script src="/vendor/xterm/lib/xterm.js"></script>
+    <script src="/vendor/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

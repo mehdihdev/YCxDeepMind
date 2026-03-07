@@ -15,11 +15,18 @@ const githubConnectButton = document.getElementById("github-connect");
 const reposRefreshButton = document.getElementById("repos-refresh");
 const repoGrid = document.getElementById("repo-grid");
 const repoShowMoreButton = document.getElementById("repo-show-more");
+const workspaceRepoSearch = document.getElementById("workspace-repo-search");
+const workspaceRepoSuggestions = document.getElementById("workspace-repo-suggestions");
+const workspaceRepoSelect = document.getElementById("workspace-repo-select");
 const githubSummary = document.getElementById("github-summary");
 const robotRepoSelect = document.getElementById("robot-repo-select");
+const robotRepoSearch = document.getElementById("robot-repo-search");
+const robotRepoSuggestions = document.getElementById("robot-repo-suggestions");
 const robotRepoMeta = document.getElementById("robot-repo-meta");
 const artifactGenerateForm = document.getElementById("artifact-generate-form");
 const artifactRepoSelect = document.getElementById("artifact-repo-select");
+const artifactRepoSearch = document.getElementById("artifact-repo-search");
+const artifactRepoSuggestions = document.getElementById("artifact-repo-suggestions");
 const artifactSaveButton = document.getElementById("artifact-save-button");
 const artifactStatus = document.getElementById("artifact-status");
 const artifactTitle = document.getElementById("artifact-title");
@@ -53,16 +60,26 @@ const settingsDeleteAccountButton = document.getElementById("settings-delete-acc
 const settingsLogoutButton = document.getElementById("settings-logout");
 const codeLoadForm = document.getElementById("code-load-form");
 const codeRepoSelect = document.getElementById("code-repo-select");
+const codeRepoSearch = document.getElementById("code-repo-search");
+const codeRepoSuggestions = document.getElementById("code-repo-suggestions");
 const codeOpenFolderButton = document.getElementById("code-open-folder");
 const codeOpenVsCodeButton = document.getElementById("code-open-vscode");
 const codeOpenNewWindowButton = document.getElementById("code-open-new-window");
 const codeLayout = document.querySelector(".code-layout");
+const codeEditorWrap = document.querySelector(".code-editor-wrap");
 const codeResizer = document.getElementById("code-resizer");
 const codeFileList = document.getElementById("code-file-list");
 const codeEditorMeta = document.getElementById("code-editor-meta");
 const monacoMount = document.getElementById("monaco-editor");
+const codeTerminal = document.getElementById("code-terminal");
+const terminalMount = document.getElementById("terminal-xterm");
+const terminalResizer = document.getElementById("terminal-resizer");
+const terminalClearButton = document.getElementById("terminal-clear");
+const terminalRestartButton = document.getElementById("terminal-restart");
 const visualizerLoadForm = document.getElementById("visualizer-load-form");
 const visualizerRepoSelect = document.getElementById("visualizer-repo-select");
+const visualizerRepoSearch = document.getElementById("visualizer-repo-search");
+const visualizerRepoSuggestions = document.getElementById("visualizer-repo-suggestions");
 const visualizerOpenFolderButton = document.getElementById("visualizer-open-folder");
 const visualizerStats = document.getElementById("visualizer-stats");
 const visualizerGraphMount = document.getElementById("visualizer-graph");
@@ -82,6 +99,9 @@ const labels = {
   settings: "Account Settings"
 };
 
+const urlParams = new URLSearchParams(window.location.search);
+const isCodeOnlyWorkspace = urlParams.get("workspace") === "code-only";
+
 let currentSession = { user: null, githubConnected: false };
 let cachedRepos = [];
 let showAllRepos = false;
@@ -92,7 +112,18 @@ let mermaidLoaded = false;
 let visLoaded = false;
 let visNetwork = null;
 let currentCodeRepoPath = "";
+let currentCodeFilePath = "";
+let currentCodeRepoFullName = "";
+let currentCodeRef = "";
+let currentCodeSource = "local";
+let currentCodeFiles = [];
+const expandedCodeDirs = new Set();
 let currentVisualizerRepoPath = "";
+let terminalUnsubscribeData = null;
+let terminalUnsubscribeExit = null;
+let terminalInstance = null;
+let terminalFitAddon = null;
+let terminalStarted = false;
 let currentTeamState = {
   storage: "unknown",
   teams: [],
@@ -131,9 +162,224 @@ function setCodePaneWidth(px) {
   localStorage.setItem("forge_code_files_width", String(clamped));
 }
 
+function setTerminalPanelHeight(px) {
+  if (!codeEditorWrap) return;
+  const clamped = Math.max(140, Math.min(520, Number(px) || 260));
+  codeEditorWrap.style.setProperty("--terminal-height", `${clamped}px`);
+  localStorage.setItem("forge_code_terminal_height", String(clamped));
+  if (monacoEditor) {
+    monacoEditor.layout();
+  }
+  resizeWorkspaceTerminal().catch(() => {});
+}
+
+function filterReposByQuery(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return cachedRepos;
+  return cachedRepos.filter((repo) => {
+    const full = String(repo.full_name || "").toLowerCase();
+    const name = String(repo.name || "").toLowerCase();
+    return full.includes(q) || name.includes(q);
+  });
+}
+
+function renderRepoSuggestions(searchInput, suggestionsEl, selectEl) {
+  if (!searchInput || !suggestionsEl || !selectEl) return;
+  const filtered = filterReposByQuery(searchInput.value).slice(0, 12);
+  suggestionsEl.innerHTML = "";
+
+  if (!searchInput.value.trim() || !filtered.length) {
+    suggestionsEl.classList.add("hidden");
+    return;
+  }
+
+  filtered.forEach((repo, index) => {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `repo-suggestion-btn${index === 0 ? " active" : ""}`;
+    button.innerHTML = `
+      <span class="repo-suggestion-title">${repo.name}</span>
+      <span class="repo-suggestion-sub">${repo.full_name}</span>
+    `;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      searchInput.value = repo.full_name;
+      selectEl.value = repo.full_name;
+      selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      suggestionsEl.classList.add("hidden");
+    });
+    li.appendChild(button);
+    suggestionsEl.appendChild(li);
+  });
+
+  suggestionsEl.classList.remove("hidden");
+}
+
+function appendTerminalOutput(text) {
+  if (terminalInstance) {
+    terminalInstance.write(String(text || ""));
+  }
+}
+
+async function resizeWorkspaceTerminal() {
+  if (!isCodeOnlyWorkspace) return;
+  if (!terminalInstance || !terminalFitAddon || !window.forgeAPI?.resizeTerminal) return;
+  terminalFitAddon.fit();
+  await window.forgeAPI.resizeTerminal({
+    cols: terminalInstance.cols,
+    rows: terminalInstance.rows
+  });
+}
+
+async function ensureXtermLoaded() {
+  if (window.Terminal && window.FitAddon?.FitAddon) {
+    return true;
+  }
+
+  const loadScript = (src) =>
+    new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[src="${src}"]`);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), {
+          once: true
+        });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Failed to load ${src}`));
+      document.head.appendChild(script);
+    });
+
+  const loadCss = (href) => {
+    if (document.querySelector(`link[href="${href}"]`)) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    document.head.appendChild(link);
+  };
+
+  const options = [
+    {
+      css: "/vendor/xterm/css/xterm.css",
+      scripts: ["/vendor/xterm/lib/xterm.js", "/vendor/xterm-addon-fit/lib/xterm-addon-fit.js"]
+    },
+    {
+      css: "https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css",
+      scripts: [
+        "https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js",
+        "https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"
+      ]
+    }
+  ];
+
+  for (const option of options) {
+    try {
+      loadCss(option.css);
+      for (const src of option.scripts) {
+        await loadScript(src);
+      }
+      if (window.Terminal && window.FitAddon?.FitAddon) {
+        return true;
+      }
+    } catch {
+      // Try next source option
+    }
+  }
+
+  return Boolean(window.Terminal && window.FitAddon?.FitAddon);
+}
+
+async function initCodeOnlyTerminal() {
+  if (!isCodeOnlyWorkspace || !codeTerminal || !terminalMount) return;
+  const loaded = await ensureXtermLoaded();
+  if (!loaded) {
+    terminalMount.textContent = "Terminal UI failed to load (xterm.js unavailable).";
+    return;
+  }
+  if (terminalInstance) return;
+
+  terminalInstance = new window.Terminal({
+    convertEol: true,
+    cursorBlink: true,
+    fontFamily: "JetBrains Mono, SFMono-Regular, Menlo, Consolas, monospace",
+    fontSize: 12,
+    theme: {
+      background: "#060c17",
+      foreground: "#d7e5ff",
+      cursor: "#62f2cc",
+      selectionBackground: "#2a4365"
+    },
+    scrollback: 3000
+  });
+  terminalFitAddon = new window.FitAddon.FitAddon();
+  terminalInstance.loadAddon(terminalFitAddon);
+  terminalInstance.open(terminalMount);
+  terminalFitAddon.fit();
+  terminalInstance.focus();
+  terminalMount.addEventListener("mousedown", () => terminalInstance?.focus());
+
+  terminalInstance.onData(async (data) => {
+    if (!window.forgeAPI?.writeTerminal) return;
+    await window.forgeAPI.writeTerminal({ data });
+  });
+
+  window.addEventListener("resize", () => {
+    resizeWorkspaceTerminal().catch(() => {});
+  });
+  setTimeout(() => {
+    resizeWorkspaceTerminal().catch(() => {});
+  }, 0);
+}
+
+async function startWorkspaceTerminal(cwd) {
+  if (!isCodeOnlyWorkspace) return;
+  if (!window.forgeAPI?.startTerminal) return;
+  if (terminalStarted) return;
+
+  await initCodeOnlyTerminal();
+
+  try {
+    const launchCwd = cwd || "";
+    const result = await window.forgeAPI.startTerminal({
+      cwd: launchCwd,
+      cols: terminalInstance?.cols || 120,
+      rows: terminalInstance?.rows || 30
+    });
+    if (!result?.ok) {
+      throw new Error(result?.error || "Unable to start terminal.");
+    }
+    terminalStarted = true;
+    appendTerminalOutput(`\r\n[terminal] started in ${launchCwd || "default cwd"}\r\n`);
+    await resizeWorkspaceTerminal();
+  } catch (err) {
+    appendTerminalOutput(`\r\n[terminal] ${err.message}\r\n`);
+  }
+}
+
 function renderRepos(repos) {
   cachedRepos = repos;
   repoGrid.innerHTML = "";
+
+  if (workspaceRepoSelect) {
+    const selected = localStorage.getItem("forge_selected_workspace_repo") || "";
+    workspaceRepoSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "All repositories";
+    workspaceRepoSelect.appendChild(placeholder);
+    repos.forEach((repo) => {
+      const option = document.createElement("option");
+      option.value = repo.full_name;
+      option.textContent = repo.full_name;
+      option.selected = selected === repo.full_name;
+      workspaceRepoSelect.appendChild(option);
+    });
+  }
+
   if (!repos.length) {
     repoGrid.innerHTML = '<div class="empty-repo">No repositories found yet.</div>';
     if (repoShowMoreButton) {
@@ -145,7 +391,8 @@ function renderRepos(repos) {
     return;
   }
 
-  const visibleRepos = showAllRepos ? repos : repos.slice(0, 6);
+  const filteredRepos = filterReposByQuery(workspaceRepoSearch?.value || "");
+  const visibleRepos = showAllRepos ? filteredRepos : filteredRepos.slice(0, 6);
   visibleRepos.forEach((repo) => {
     const card = document.createElement("a");
     card.className = "repo-card";
@@ -169,7 +416,7 @@ function renderRepos(repos) {
   });
 
   if (repoShowMoreButton) {
-    if (repos.length <= 6) {
+    if (filteredRepos.length <= 6) {
       repoShowMoreButton.style.display = "none";
     } else {
       repoShowMoreButton.style.display = "inline-flex";
@@ -186,12 +433,13 @@ function renderRobotRepoSelector() {
   if (!robotRepoSelect) return;
 
   const saved = localStorage.getItem("forge_selected_robot_repo") || "";
+  const filteredRepos = filterReposByQuery(robotRepoSearch?.value);
   robotRepoSelect.innerHTML = "";
 
-  if (!cachedRepos.length) {
+  if (!filteredRepos.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No repositories loaded";
+    option.textContent = cachedRepos.length ? "No matching repositories" : "No repositories loaded";
     robotRepoSelect.appendChild(option);
     if (robotRepoMeta) {
       robotRepoMeta.textContent = "Connect GitHub and refresh repos to select one.";
@@ -204,7 +452,7 @@ function renderRobotRepoSelector() {
   placeholder.textContent = "Select a repository";
   robotRepoSelect.appendChild(placeholder);
 
-  cachedRepos.forEach((repo) => {
+  filteredRepos.forEach((repo) => {
     const option = document.createElement("option");
     option.value = repo.full_name;
     option.textContent = repo.full_name;
@@ -239,12 +487,13 @@ function renderArtifactRepoSelector() {
   if (!artifactRepoSelect) return;
 
   const saved = localStorage.getItem("forge_selected_artifact_repo") || "";
+  const filteredRepos = filterReposByQuery(artifactRepoSearch?.value);
   artifactRepoSelect.innerHTML = "";
 
-  if (!cachedRepos.length) {
+  if (!filteredRepos.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No repositories loaded";
+    option.textContent = cachedRepos.length ? "No matching repositories" : "No repositories loaded";
     artifactRepoSelect.appendChild(option);
     return;
   }
@@ -254,25 +503,27 @@ function renderArtifactRepoSelector() {
   placeholder.textContent = "Select a repository";
   artifactRepoSelect.appendChild(placeholder);
 
-  cachedRepos.forEach((repo) => {
+  filteredRepos.forEach((repo) => {
     const option = document.createElement("option");
     option.value = repo.full_name;
     option.textContent = repo.full_name;
     option.selected = saved === repo.full_name;
     artifactRepoSelect.appendChild(option);
   });
+
 }
 
 function renderCodeRepoSelector() {
   if (!codeRepoSelect) return;
 
   const saved = localStorage.getItem("forge_selected_code_repo") || "";
+  const filteredRepos = filterReposByQuery(codeRepoSearch?.value);
   codeRepoSelect.innerHTML = "";
 
-  if (!cachedRepos.length) {
+  if (!filteredRepos.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No repositories loaded";
+    option.textContent = cachedRepos.length ? "No matching repositories" : "No repositories loaded";
     codeRepoSelect.appendChild(option);
     return;
   }
@@ -282,25 +533,27 @@ function renderCodeRepoSelector() {
   placeholder.textContent = "Select a repository";
   codeRepoSelect.appendChild(placeholder);
 
-  cachedRepos.forEach((repo) => {
+  filteredRepos.forEach((repo) => {
     const option = document.createElement("option");
     option.value = repo.full_name;
     option.textContent = repo.full_name;
     option.selected = saved === repo.full_name;
     codeRepoSelect.appendChild(option);
   });
+
 }
 
 function renderVisualizerRepoSelector() {
   if (!visualizerRepoSelect) return;
 
   const saved = localStorage.getItem("forge_selected_visualizer_repo") || "";
+  const filteredRepos = filterReposByQuery(visualizerRepoSearch?.value);
   visualizerRepoSelect.innerHTML = "";
 
-  if (!cachedRepos.length) {
+  if (!filteredRepos.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No repositories loaded";
+    option.textContent = cachedRepos.length ? "No matching repositories" : "No repositories loaded";
     visualizerRepoSelect.appendChild(option);
     if (visualizerStats) {
       visualizerStats.textContent = "Connect GitHub and refresh repos to build a graph.";
@@ -313,13 +566,14 @@ function renderVisualizerRepoSelector() {
   placeholder.textContent = "Select a repository";
   visualizerRepoSelect.appendChild(placeholder);
 
-  cachedRepos.forEach((repo) => {
+  filteredRepos.forEach((repo) => {
     const option = document.createElement("option");
     option.value = repo.full_name;
     option.textContent = repo.full_name;
     option.selected = saved === repo.full_name;
     visualizerRepoSelect.appendChild(option);
   });
+
 }
 
 function wrapText(text, maxCharsPerLine = 34, maxLines = 4) {
@@ -669,17 +923,94 @@ async function renderArtifactDiagram(mermaidSource) {
   }
 }
 
-function renderCodeFiles(files) {
+function seedExpandedCodeDirs(files) {
+  expandedCodeDirs.clear();
+  files.forEach((filePath) => {
+    const parts = String(filePath || "").split("/").filter(Boolean);
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      if (i <= 1) {
+        expandedCodeDirs.add(parts.slice(0, i + 1).join("/"));
+      }
+    }
+  });
+}
+
+function buildCodeTree(files) {
+  const root = { dirs: new Map(), files: [] };
+  files.forEach((filePath) => {
+    const parts = String(filePath || "").split("/").filter(Boolean);
+    let node = root;
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
+      const isFile = i === parts.length - 1;
+      if (isFile) {
+        node.files.push({ name: part, path: filePath });
+      } else {
+        if (!node.dirs.has(part)) {
+          const dirPath = parts.slice(0, i + 1).join("/");
+          node.dirs.set(part, { name: part, path: dirPath, dirs: new Map(), files: [] });
+        }
+        node = node.dirs.get(part);
+      }
+    }
+  });
+  return root;
+}
+
+function renderCodeTreeLevel(node, mount, depth = 0) {
+  const dirs = Array.from(node.dirs.values()).sort((a, b) => a.name.localeCompare(b.name));
+  const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
+
+  dirs.forEach((dir) => {
+    const li = document.createElement("li");
+    li.className = "tree-node";
+
+    const expanded = expandedCodeDirs.has(dir.path);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "tree-dir-btn";
+    toggle.dataset.treeToggle = dir.path;
+    toggle.style.setProperty("--tree-depth", String(depth));
+    toggle.innerHTML = `
+      <span class="tree-chevron">${expanded ? "▾" : "▸"}</span>
+      <span class="tree-folder">📁</span>
+      <span class="tree-label">${dir.name}</span>
+    `;
+    li.appendChild(toggle);
+
+    const children = document.createElement("ul");
+    children.className = `tree-children${expanded ? "" : " hidden"}`;
+    renderCodeTreeLevel(dir, children, depth + 1);
+    li.appendChild(children);
+    mount.appendChild(li);
+  });
+
+  files.forEach((file) => {
+    const li = document.createElement("li");
+    li.className = "tree-node";
+    li.innerHTML = `
+      <button type="button" class="code-file-btn tree-file-btn" data-code-file="${file.path}" style="--tree-depth:${depth}">
+        <span class="tree-file">📄</span>
+        <span class="tree-label">${file.name}</span>
+      </button>
+    `;
+    mount.appendChild(li);
+  });
+}
+
+function renderCodeFiles(files, { preserveExpansion = false } = {}) {
+  currentCodeFiles = files.slice();
   codeFileList.innerHTML = "";
+  codeFileList.classList.add("code-tree");
   if (!files.length) {
     codeFileList.innerHTML = '<li class="empty-list">No files found.</li>';
     return;
   }
-  files.forEach((filePath) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<button type="button" class="code-file-btn" data-code-file="${filePath}">${filePath}</button>`;
-    codeFileList.appendChild(li);
-  });
+  if (!preserveExpansion) {
+    seedExpandedCodeDirs(files);
+  }
+  const tree = buildCodeTree(files);
+  renderCodeTreeLevel(tree, codeFileList, 0);
 }
 
 async function loadCodeTreeByPath(repoPath) {
@@ -687,37 +1018,59 @@ async function loadCodeTreeByPath(repoPath) {
     method: "GET"
   });
   currentCodeRepoPath = data.repoPath;
+  currentCodeRepoFullName = "";
+  currentCodeRef = "";
+  currentCodeSource = "local";
+  currentCodeFilePath = "";
   renderCodeFiles(data.files || []);
   if (codeEditorMeta) {
     codeEditorMeta.textContent = `Loaded ${data.files.length} files from ${data.repoPath}`;
   }
   await ensureMonacoLoaded();
+  await startWorkspaceTerminal(data.repoPath);
 }
 
 async function loadCodeFile(filePath) {
-  if (!currentCodeRepoPath || !filePath) return;
+  if (!filePath) return;
 
   try {
-    const data = await apiJson(
-      `/api/code/file?repoPath=${encodeURIComponent(currentCodeRepoPath)}&filePath=${encodeURIComponent(
-        filePath
-      )}`,
-      { method: "GET" }
-    );
+    let data;
+    if (currentCodeSource === "github") {
+      if (!currentCodeRepoFullName) return;
+      data = await apiJson(
+        `/api/code/file/github?repoFullName=${encodeURIComponent(
+          currentCodeRepoFullName
+        )}&filePath=${encodeURIComponent(filePath)}&ref=${encodeURIComponent(currentCodeRef || "")}`,
+        { method: "GET" }
+      );
+    } else {
+      if (!currentCodeRepoPath) return;
+      data = await apiJson(
+        `/api/code/file?repoPath=${encodeURIComponent(currentCodeRepoPath)}&filePath=${encodeURIComponent(
+          filePath
+        )}`,
+        { method: "GET" }
+      );
+    }
 
     const ok = await ensureMonacoLoaded();
     if (ok && monacoEditor) {
-      const model = window.monaco.editor.createModel(
-        data.content,
-        inferLanguage(filePath),
-        window.monaco.Uri.parse(`inmemory://forge/${filePath}`)
-      );
+      const model = window.monaco.editor.createModel(data.content, inferLanguage(filePath));
       monacoEditor.setModel(model);
+      monacoEditor.updateOptions({
+        readOnly: Boolean(data.readOnly || currentCodeSource === "github")
+      });
+      monacoEditor.layout();
     }
 
     if (codeEditorMeta) {
-      codeEditorMeta.textContent = `${data.repoPath} • ${data.filePath}`;
+      if (currentCodeSource === "github") {
+        codeEditorMeta.textContent = `${data.repoFullName} @ ${data.ref} • ${data.filePath} • read-only`;
+      } else {
+        codeEditorMeta.textContent = `${data.repoPath} • ${data.filePath}`;
+      }
     }
+    currentCodeFilePath = data.filePath;
     setStatus(`Opened ${filePath}`);
   } catch (err) {
     setStatus(err.message, true);
@@ -974,6 +1327,28 @@ if (repoShowMoreButton) {
   });
 }
 
+if (workspaceRepoSearch) {
+  workspaceRepoSearch.addEventListener("input", () => {
+    renderRepos(cachedRepos);
+    renderRepoSuggestions(workspaceRepoSearch, workspaceRepoSuggestions, workspaceRepoSelect);
+  });
+  workspaceRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(workspaceRepoSearch, workspaceRepoSuggestions, workspaceRepoSelect);
+  });
+  workspaceRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => workspaceRepoSuggestions?.classList.add("hidden"), 120);
+  });
+}
+
+if (workspaceRepoSelect) {
+  workspaceRepoSelect.addEventListener("change", () => {
+    const selected = workspaceRepoSelect.value;
+    localStorage.setItem("forge_selected_workspace_repo", selected);
+    workspaceRepoSearch.value = selected;
+    renderRepos(cachedRepos);
+  });
+}
+
 if (robotRepoSelect) {
   robotRepoSelect.addEventListener("change", () => {
     const selected = robotRepoSelect.value;
@@ -994,9 +1369,58 @@ if (codeRepoSelect) {
   });
 }
 
+if (robotRepoSearch) {
+  robotRepoSearch.addEventListener("input", () => {
+    renderRobotRepoSelector();
+    renderRepoSuggestions(robotRepoSearch, robotRepoSuggestions, robotRepoSelect);
+  });
+  robotRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(robotRepoSearch, robotRepoSuggestions, robotRepoSelect);
+  });
+  robotRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => robotRepoSuggestions?.classList.add("hidden"), 120);
+  });
+}
+
+if (artifactRepoSearch) {
+  artifactRepoSearch.addEventListener("input", () => {
+    renderArtifactRepoSelector();
+    renderRepoSuggestions(artifactRepoSearch, artifactRepoSuggestions, artifactRepoSelect);
+  });
+  artifactRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(artifactRepoSearch, artifactRepoSuggestions, artifactRepoSelect);
+  });
+  artifactRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => artifactRepoSuggestions?.classList.add("hidden"), 120);
+  });
+}
+
+if (codeRepoSearch) {
+  codeRepoSearch.addEventListener("input", () => {
+    renderCodeRepoSelector();
+    renderRepoSuggestions(codeRepoSearch, codeRepoSuggestions, codeRepoSelect);
+  });
+  codeRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(codeRepoSearch, codeRepoSuggestions, codeRepoSelect);
+  });
+  codeRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => codeRepoSuggestions?.classList.add("hidden"), 120);
+  });
+}
+
 if (codeLayout) {
   const savedWidth = Number(localStorage.getItem("forge_code_files_width") || "320");
   setCodePaneWidth(savedWidth);
+}
+
+if (isCodeOnlyWorkspace && codeEditorWrap) {
+  const savedTerminalHeight = Number(localStorage.getItem("forge_code_terminal_height") || "260");
+  setTerminalPanelHeight(savedTerminalHeight);
+  window.addEventListener("resize", () => {
+    if (monacoEditor) {
+      monacoEditor.layout();
+    }
+  });
 }
 
 if (codeResizer) {
@@ -1022,9 +1446,46 @@ if (codeResizer) {
   });
 }
 
+if (isCodeOnlyWorkspace && terminalResizer) {
+  terminalResizer.addEventListener("mousedown", (event) => {
+    if (!codeEditorWrap) return;
+    event.preventDefault();
+    terminalResizer.classList.add("dragging");
+    const startY = event.clientY;
+    const startHeight = terminalMount?.getBoundingClientRect().height || 260;
+
+    const onMove = (moveEvent) => {
+      const delta = startY - moveEvent.clientY;
+      setTerminalPanelHeight(startHeight + delta);
+    };
+
+    const onUp = () => {
+      terminalResizer.classList.remove("dragging");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+}
+
 if (visualizerRepoSelect) {
   visualizerRepoSelect.addEventListener("change", () => {
     localStorage.setItem("forge_selected_visualizer_repo", visualizerRepoSelect.value);
+  });
+}
+
+if (visualizerRepoSearch) {
+  visualizerRepoSearch.addEventListener("input", () => {
+    renderVisualizerRepoSelector();
+    renderRepoSuggestions(visualizerRepoSearch, visualizerRepoSuggestions, visualizerRepoSelect);
+  });
+  visualizerRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(visualizerRepoSearch, visualizerRepoSuggestions, visualizerRepoSelect);
+  });
+  visualizerRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => visualizerRepoSuggestions?.classList.add("hidden"), 120);
   });
 }
 
@@ -1109,7 +1570,24 @@ if (codeLoadForm) {
         `/api/code/tree/by-repo?repoFullName=${encodeURIComponent(repoFullName)}`,
         { method: "GET" }
       );
-      await loadCodeTreeByPath(data.repoPath);
+      if (data.source === "github") {
+        currentCodeSource = "github";
+        currentCodeRepoFullName = data.repoFullName;
+        currentCodeRef = data.ref || "";
+        currentCodeRepoPath = "";
+        currentCodeFilePath = "";
+        renderCodeFiles(data.files || []);
+        const ok = await ensureMonacoLoaded();
+        if (ok && monacoEditor) {
+          monacoEditor.updateOptions({ readOnly: true });
+          monacoEditor.setValue("// GitHub read-only mode. Select a file from the list.");
+        }
+        if (codeEditorMeta) {
+          codeEditorMeta.textContent = `${data.repoFullName} @ ${data.ref} • read-only (GitHub)`;
+        }
+      } else {
+        await loadCodeTreeByPath(data.repoPath);
+      }
       setStatus("Repository loaded");
     } catch (err) {
       setStatus(err.message, true);
@@ -1144,8 +1622,12 @@ if (codeOpenFolderButton) {
 
 if (codeOpenVsCodeButton) {
   codeOpenVsCodeButton.addEventListener("click", async () => {
+    if (currentCodeSource === "github") {
+      setStatus("GitHub mode is read-only. Use Open Folder for a local editable workspace.", true);
+      return;
+    }
     if (!currentCodeRepoPath) {
-      setStatus("Load a repository or folder first.", true);
+      setStatus("Load a local repository or folder first.", true);
       return;
     }
     if (!window.forgeAPI?.openInVSCode) {
@@ -1166,23 +1648,46 @@ if (codeOpenVsCodeButton) {
 
 if (codeOpenNewWindowButton) {
   codeOpenNewWindowButton.addEventListener("click", async () => {
-    if (!currentCodeRepoPath) {
+    if (!currentCodeRepoPath && !currentCodeRepoFullName) {
       setStatus("Load a repository or folder first.", true);
       return;
     }
-    if (!window.forgeAPI?.openInSystemWindow) {
+    if (!window.forgeAPI?.openCodeWindow) {
       setStatus("Open in New Window is only available in desktop mode.", true);
       return;
     }
     try {
-      const result = await window.forgeAPI.openInSystemWindow(currentCodeRepoPath);
+      const result = await window.forgeAPI.openCodeWindow({
+        repoPath: currentCodeRepoPath,
+        repoFullName: currentCodeRepoFullName,
+        ref: currentCodeRef,
+        source: currentCodeSource,
+        filePath: currentCodeFilePath
+      });
       if (!result?.ok) {
-        throw new Error(result?.error || "Could not open folder window.");
+        throw new Error(result?.error || "Could not open code window.");
       }
-      setStatus("Opened in new window");
+      setStatus("Opened code in new window");
     } catch (err) {
       setStatus(err.message, true);
     }
+  });
+}
+
+if (terminalClearButton) {
+  terminalClearButton.addEventListener("click", () => {
+    if (terminalInstance) {
+      terminalInstance.clear();
+    }
+  });
+}
+
+if (terminalRestartButton) {
+  terminalRestartButton.addEventListener("click", async () => {
+    if (!window.forgeAPI?.stopTerminal) return;
+    await window.forgeAPI.stopTerminal();
+    terminalStarted = false;
+    await startWorkspaceTerminal(currentCodeRepoPath || "");
   });
 }
 
@@ -1463,14 +1968,93 @@ window.forgeAPI
     meta.textContent = "Unable to load app metadata";
   });
 
-setActiveView("workspace");
+setActiveView(isCodeOnlyWorkspace ? "code" : "workspace");
+if (isCodeOnlyWorkspace) {
+  document.body.classList.add("code-only-workspace");
+  title.textContent = "Code Workspace";
+  if (codeTerminal) {
+    codeTerminal.classList.add("active");
+  }
+  initCodeOnlyTerminal().catch(() => {});
+  if (window.forgeAPI?.onTerminalData && window.forgeAPI?.onTerminalExit) {
+    terminalUnsubscribeData = window.forgeAPI.onTerminalData((payload) => {
+      appendTerminalOutput(payload?.data || "");
+    });
+    terminalUnsubscribeExit = window.forgeAPI.onTerminalExit((payload) => {
+      terminalStarted = false;
+      appendTerminalOutput(`\r\n[terminal exited] code=${payload?.code ?? "unknown"}\r\n`);
+    });
+  }
+  startWorkspaceTerminal(currentCodeRepoPath || "").catch(() => {});
+  requestAnimationFrame(() => {
+    if (monacoEditor) {
+      monacoEditor.layout();
+    }
+  });
+}
 if (artifactMermaid?.textContent) {
   renderArtifactDiagram(artifactMermaid.textContent);
 }
 
-refreshSession().catch(() => {
-  setStatus("Unable to load session", true);
-});
+refreshSession()
+  .then(async () => {
+    const initialView = urlParams.get("view");
+    const initialRepoPath = urlParams.get("repoPath");
+    const initialRepoFullName = urlParams.get("repoFullName");
+    const initialRef = urlParams.get("ref");
+    const initialSource = urlParams.get("source");
+    const initialFilePath = urlParams.get("filePath");
+
+    if (!isCodeOnlyWorkspace && initialView && labels[initialView]) {
+      setActiveView(initialView);
+    }
+
+    if (initialRepoPath) {
+      try {
+        await loadCodeTreeByPath(initialRepoPath);
+        setActiveView("code");
+        if (initialFilePath) {
+          await loadCodeFile(initialFilePath);
+        }
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    } else if (initialRepoFullName && initialSource === "github") {
+      try {
+        const data = await apiJson(
+          `/api/code/tree/by-repo?repoFullName=${encodeURIComponent(
+            initialRepoFullName
+          )}&ref=${encodeURIComponent(initialRef || "")}`,
+          { method: "GET" }
+        );
+        if (data.source === "github") {
+          currentCodeSource = "github";
+          currentCodeRepoFullName = data.repoFullName;
+          currentCodeRef = data.ref || "";
+          currentCodeRepoPath = "";
+          currentCodeFilePath = "";
+          renderCodeFiles(data.files || []);
+          const ok = await ensureMonacoLoaded();
+          if (ok && monacoEditor) {
+            monacoEditor.updateOptions({ readOnly: true });
+            monacoEditor.setValue("// GitHub read-only mode. Select a file from the list.");
+          }
+          if (codeEditorMeta) {
+            codeEditorMeta.textContent = `${data.repoFullName} @ ${data.ref} • read-only (GitHub)`;
+          }
+          setActiveView("code");
+          if (initialFilePath) {
+            await loadCodeFile(initialFilePath);
+          }
+        }
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    }
+  })
+  .catch(() => {
+    setStatus("Unable to load session", true);
+  });
 
 document.addEventListener("click", (event) => {
   const target = event.target;
@@ -1496,8 +2080,25 @@ document.addEventListener("click", (event) => {
       });
   }
 
-  if (target instanceof HTMLElement && target.dataset.codeFile) {
-    loadCodeFile(target.dataset.codeFile);
+  if (target instanceof HTMLElement) {
+    const toggleButton = target.closest("[data-tree-toggle]");
+    if (toggleButton instanceof HTMLElement && toggleButton.dataset.treeToggle) {
+      const dirPath = toggleButton.dataset.treeToggle;
+      if (expandedCodeDirs.has(dirPath)) {
+        expandedCodeDirs.delete(dirPath);
+      } else {
+        expandedCodeDirs.add(dirPath);
+      }
+      renderCodeFiles(currentCodeFiles, { preserveExpansion: true });
+      return;
+    }
+  }
+
+  if (target instanceof HTMLElement) {
+    const fileButton = target.closest("[data-code-file]");
+    if (fileButton instanceof HTMLElement && fileButton.dataset.codeFile) {
+      loadCodeFile(fileButton.dataset.codeFile);
+    }
   }
 
   if (target instanceof HTMLElement && target.dataset.taskDelete) {
@@ -1529,5 +2130,19 @@ document.addEventListener("change", (event) => {
       .catch((err) => {
         setStatus(err.message, true);
       });
+  }
+});
+
+window.addEventListener("beforeunload", () => {
+  if (terminalUnsubscribeData) {
+    terminalUnsubscribeData();
+    terminalUnsubscribeData = null;
+  }
+  if (terminalUnsubscribeExit) {
+    terminalUnsubscribeExit();
+    terminalUnsubscribeExit = null;
+  }
+  if (window.forgeAPI?.stopTerminal) {
+    window.forgeAPI.stopTerminal().catch(() => {});
   }
 });

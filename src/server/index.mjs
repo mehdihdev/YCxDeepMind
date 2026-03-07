@@ -14,6 +14,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rendererDir = path.join(__dirname, "..", "renderer");
+const nodeModulesDir = path.join(__dirname, "..", "..", "node_modules");
 
 const PORT = Number(process.env.PORT || 3030);
 const APP_URL = process.env.APP_URL || `http://127.0.0.1:${PORT}`;
@@ -51,6 +52,8 @@ const supabaseAdmin = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/vendor/xterm", express.static(path.join(nodeModulesDir, "xterm")));
+app.use("/vendor/xterm-addon-fit", express.static(path.join(nodeModulesDir, "xterm-addon-fit")));
 
 const FileStore = sessionFileStore(session);
 const sessionDir = path.join(os.homedir(), ".forge-rde", "sessions");
@@ -85,22 +88,10 @@ function sanitizeUser(user) {
 }
 
 async function fetchGithubRepos(token) {
-  const response = await fetch(
-    "https://api.github.com/user/repos?sort=updated&per_page=30&affiliation=owner,collaborator,organization_member",
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "User-Agent": "forge-rde"
-      }
-    }
+  const repos = await fetchGithubJson(
+    token,
+    "/user/repos?sort=updated&per_page=30&affiliation=owner,collaborator,organization_member"
   );
-
-  if (!response.ok) {
-    throw new Error(`GitHub API error (${response.status})`);
-  }
-
-  const repos = await response.json();
   return repos.map((repo) => ({
     name: repo.name,
     owner: repo.owner?.login,
@@ -114,6 +105,87 @@ async function fetchGithubRepos(token) {
     forks: repo.forks_count || 0,
     html_url: repo.html_url
   }));
+}
+
+async function fetchGithubJson(token, route) {
+  const response = await fetch(`https://api.github.com${route}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "forge-rde"
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`GitHub API error (${response.status}) ${text}`);
+  }
+
+  return response.json();
+}
+
+function parseRepoFullName(repoFullName) {
+  const [owner, repo] = String(repoFullName || "").split("/");
+  if (!owner || !repo) {
+    throw new Error("repoFullName must be in owner/repo format.");
+  }
+  return { owner, repo };
+}
+
+function encodeGithubFilePath(filePath) {
+  return String(filePath || "")
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+async function fetchGithubRepoTree(token, repoFullName, ref = "") {
+  const { owner, repo } = parseRepoFullName(repoFullName);
+  const repoMeta = await fetchGithubJson(token, `/repos/${owner}/${repo}`);
+  const branch = String(ref || repoMeta.default_branch || "main");
+  const treeData = await fetchGithubJson(
+    token,
+    `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`
+  );
+  const files = Array.isArray(treeData?.tree)
+    ? treeData.tree
+        .filter((entry) => entry?.type === "blob" && typeof entry.path === "string")
+        .map((entry) => entry.path)
+        .sort((a, b) => a.localeCompare(b))
+    : [];
+
+  return { defaultBranch: branch, files };
+}
+
+async function fetchGithubFileContent(token, repoFullName, filePath, ref = "") {
+  const { owner, repo } = parseRepoFullName(repoFullName);
+  const repoMeta = await fetchGithubJson(token, `/repos/${owner}/${repo}`);
+  const branch = String(ref || repoMeta.default_branch || "main");
+  const encodedPath = encodeGithubFilePath(filePath);
+  const contentData = await fetchGithubJson(
+    token,
+    `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`
+  );
+
+  if (Array.isArray(contentData)) {
+    throw new Error("Requested path is a directory, not a file.");
+  }
+
+  if (contentData?.encoding === "base64" && typeof contentData?.content === "string") {
+    const content = Buffer.from(contentData.content.replace(/\n/g, ""), "base64").toString("utf-8");
+    return { content, ref: branch };
+  }
+
+  if (contentData?.download_url) {
+    const fileResponse = await fetch(contentData.download_url);
+    if (!fileResponse.ok) {
+      throw new Error(`Unable to fetch file content (${fileResponse.status}).`);
+    }
+    const content = await fileResponse.text();
+    return { content, ref: branch };
+  }
+
+  throw new Error("Unsupported GitHub content response.");
 }
 
 function formatRepoDate(isoString) {
@@ -687,10 +759,7 @@ async function buildRepositoryGraph(repoPath, options = {}) {
 }
 
 async function resolveRepoFullNameToLocalPath(repoFullName) {
-  const [owner, repo] = String(repoFullName || "").split("/");
-  if (!owner || !repo) {
-    throw new Error("repoFullName must be in owner/repo format.");
-  }
+  const { owner, repo } = parseRepoFullName(repoFullName);
 
   const candidates = [];
   if (LOCAL_REPOS_ROOT) {
@@ -1114,6 +1183,7 @@ app.get("/api/code/file", requireAuth, async (req, res) => {
 
 app.get("/api/code/tree/by-repo", requireAuth, async (req, res) => {
   const repoFullName = String(req.query.repoFullName || "").trim();
+  const ref = String(req.query.ref || "").trim();
   if (!repoFullName) {
     res.status(400).json({ error: "repoFullName is required." });
     return;
@@ -1122,9 +1192,69 @@ app.get("/api/code/tree/by-repo", requireAuth, async (req, res) => {
   try {
     const repoPath = await resolveRepoFullNameToLocalPath(repoFullName);
     const files = await listRepoFiles(repoPath);
-    res.json({ repoPath, repoFullName, files });
+    res.json({
+      source: "local",
+      readOnly: false,
+      repoPath,
+      repoFullName,
+      files
+    });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to resolve local repository." });
+    try {
+      await hydrateGithubToken(req.session);
+      const token = req.session?.githubToken;
+      if (!token) {
+        throw err;
+      }
+      const tree = await fetchGithubRepoTree(token, repoFullName, ref);
+      res.json({
+        source: "github",
+        readOnly: true,
+        repoFullName,
+        ref: tree.defaultBranch,
+        files: tree.files
+      });
+    } catch (fallbackErr) {
+      res.status(500).json({
+        error:
+          fallbackErr instanceof Error
+            ? fallbackErr.message
+            : "Unable to resolve local repository or fetch GitHub repository."
+      });
+    }
+  }
+});
+
+app.get("/api/code/file/github", requireAuth, async (req, res) => {
+  const repoFullName = String(req.query.repoFullName || "").trim();
+  const filePath = String(req.query.filePath || "").trim();
+  const ref = String(req.query.ref || "").trim();
+  if (!repoFullName || !filePath) {
+    res.status(400).json({ error: "repoFullName and filePath are required." });
+    return;
+  }
+
+  try {
+    await hydrateGithubToken(req.session);
+    const token = req.session?.githubToken;
+    if (!token) {
+      res.status(400).json({
+        error: "GitHub token unavailable. Connect GitHub and refresh your session."
+      });
+      return;
+    }
+
+    const data = await fetchGithubFileContent(token, repoFullName, filePath, ref);
+    res.json({
+      source: "github",
+      readOnly: true,
+      repoFullName,
+      filePath,
+      ref: data.ref,
+      content: data.content
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to load GitHub file content." });
   }
 });
 
