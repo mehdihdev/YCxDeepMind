@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Forge RDE Robot Graph",
+  "description": "Schema for the robot graph representation in Forge RDE",
+  "type": "object",
+  "properties": {
+    "robot": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["so100", "aloha", "custom"] },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "name", "type"]
+    },
+    "connection": {
+      "type": "object",
+      "properties": {
+        "jetson": {
+          "type": "object",
+          "properties": {
+            "ip": { "type": "string", "format": "ipv4" },
+            "ssh_user": { "type": "string" },
+            "status": { "type": "string", "enum": ["connected", "disconnected", "unknown"] }
+          }
+        },
+        "servers": {
+          "type": "object",
+          "properties": {
+            "arm": {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string", "format": "uri" },
+                "status": { "type": "string", "enum": ["connected", "disconnected", "error"] }
+              }
+            },
+            "camera": {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string", "format": "uri" },
+                "status": { "type": "string", "enum": ["connected", "disconnected", "error"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "type": "object",
+      "properties": {
+        "arms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "enum": ["leader", "follower"] },
+              "device": { "type": "string" },
+              "joints": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer" },
+                    "name": { "type": "string" },
+                    "type": { "type": "string", "enum": ["revolute", "prismatic", "continuous"] },
+                    "motor_model": { "type": "string" },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "min_deg": { "type": "number" },
+                        "max_deg": { "type": "number" }
+                      }
+                    },
+                    "calibrated": { "type": "boolean" },
+                    "current_position": { "type": "number" }
+                  }
+                }
+              },
+              "calibration_status": { "type": "string", "enum": ["calibrated", "uncalibrated", "partial"] }
+            }
+          }
+        },
+        "cameras": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "device": { "type": "string" },
+              "resolution": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "fps": { "type": "integer" },
+              "enabled": { "type": "boolean" },
+              "status": { "type": "string", "enum": ["streaming", "idle", "error", "disconnected"] }
+            }
+          }
+        },
+        "base": {
+          "type": "object",
+          "description": "Mobile base (e.g., ELEGOO car)",
+          "properties": {
+            "type": { "type": "string" },
+            "enabled": { "type": "boolean" },
+            "controller": { "type": "string" }
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "teleoperation": { "type": "boolean" },
+        "recording": { "type": "boolean" },
+        "playback": { "type": "boolean" },
+        "simulation": { "type": "boolean" }
+      }
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["idle", "teleop", "recording", "playback", "calibrating"] },
+        "teleop_enabled": { "type": "boolean" },
+        "recording_active": { "type": "boolean" },
+        "episode_count": { "type": "integer" },
+        "last_error": { "type": "string" }
+      }
+    },
+    "datasets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "episodes": { "type": "integer" },
+          "frames": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "path": { "type": "string" }
+        }
+      }
+    }
+  }
+}

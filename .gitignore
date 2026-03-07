@@ -2,6 +2,5 @@ node_modules
 npm-debug.log*
 .npm-cache
 .env
-dist
 out
 .DS_Store

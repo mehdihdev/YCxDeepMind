@@ -8,18 +8,17 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="window-bar">
+    <div class="window-bar flex items-center border-b border-slate-700/70 bg-slate-950/95 backdrop-blur">
       <span class="window-title">Forge RDE</span>
     </div>
-    <div class="app-shell">
-      <aside class="sidebar">
+    <div class="app-shell bg-slate-950 text-slate-100">
+      <aside class="sidebar border-r border-slate-800 bg-slate-950/95">
         <div>
-          <h1>🛠️ Forge RDE</h1>
-          <p class="tagline">Robotics Development Environment</p>
+          <h1 class="text-3xl font-semibold tracking-tight">🛠️ Forge RDE</h1>
+          <p class="tagline text-slate-400">Robotics Development Environment</p>
           <nav class="nav">
             <button class="nav-item active" data-view="workspace">Team Workspace</button>
             <button class="nav-item" data-view="code">Code Workspace</button>
-            <button class="nav-item" data-view="visualizer">Repository Visualizer</button>
             <button class="nav-item" data-view="robot">My Robot</button>
             <button class="nav-item" data-view="bench">Live Bench</button>
             <button class="nav-item" data-view="artifacts">Artifacts</button>
@@ -236,6 +235,76 @@
         </section>
 
         <section class="view" id="robot">
+          <div class="robot-workspace">
+            <aside class="robot-rail robot-left-rail">
+              <article class="card full robot-panel">
+                <p class="settings-eyebrow">MY ROBOT</p>
+                <h3>Graph Workspace</h3>
+                <p class="muted">
+                  Use either a repo or any local folder as the active robot source. Sync the graph, plan the mission, discover missing parts, and assign resulting work.
+                </p>
+                <div class="stack-form robot-repo-stack">
+                  <label for="robot-repo-select" class="muted">GitHub Repo (optional)</label>
+                  <select id="robot-repo-select">
+                    <option value="">No repositories loaded</option>
+                  </select>
+                  <div class="actions">
+                    <button id="robot-open-folder-button" type="button" class="secondary-action">Open Folder…</button>
+                    <button id="robot-refresh-button" type="button">Sync Workspace</button>
+                  </div>
+                  <p id="robot-repo-meta" class="muted">Select a repo or open any local folder to bind the robot workspace source.</p>
+                  <p id="robot-source-badge" class="storage-badge">Source: none</p>
+                </div>
+              </article>
+
+              <article class="card full robot-panel">
+                <div class="repo-header">
+                  <div>
+                    <h3>Mission Board</h3>
+                    <p class="muted">Planner output renders as execution phases, blockers, part needs, and team tasks.</p>
+                  </div>
+                  <p id="robot-graph-revision" class="storage-badge">Revision: 0</p>
+                </div>
+                <div id="robot-summary-grid" class="robot-summary-grid"></div>
+                <form id="robot-plan-form" class="stack-form">
+                  <textarea id="robot-objective" rows="4" placeholder="Build a pick-and-drive mission that mounts the arm, verifies the serial path, and prepares the robot for a live bench demo." required></textarea>
+                  <button type="submit">Plan Mission</button>
+                </form>
+                <div id="robot-mission-board" class="robot-board-list"></div>
+              </article>
+
+              <article class="card full robot-panel">
+                <h3>Requirement Queue</h3>
+                <p class="muted">Create requirements directly or let the planner add them when the mission needs new parts.</p>
+                <form id="robot-requirement-form" class="stack-form">
+                  <input id="robot-requirement-title" type="text" placeholder="Low-latency arm camera with USB-C output" />
+                  <textarea id="robot-requirement-description" rows="3" placeholder="Describe the capability, part, or constraint you need."></textarea>
+                  <button type="submit">Add Requirement</button>
+                </form>
+                <div id="robot-requirement-list" class="robot-requirement-list"></div>
+              </article>
+
+              <article class="card full robot-panel">
+                <h3>Verifier</h3>
+                <p class="muted">Runs available repo/folder checks by default, then lets you focus on a specific robot issue if needed.</p>
+                <form id="robot-verify-form" class="stack-form">
+                  <textarea id="robot-observations" rows="4" placeholder="Optional focus: verify the arm serial path and camera pipeline, then compare observed device ports to the graph."></textarea>
+                  <button type="submit">Run Verifier</button>
+                </form>
+                <div id="robot-verifier-runs" class="robot-board-list"></div>
+              </article>
+            </aside>
+
+            <section class="card robot-graph-panel">
+              <div class="repo-header">
+                <div>
+                  <h3>Robot Graph</h3>
+                  <p class="muted">Interactive workspace graph built from the selected repo or folder, planner output, verifier findings, and part selections.</p>
+                </div>
+                <p id="robot-graph-meta" class="muted">No active source</p>
+              </div>
+              <div id="robot-graph" class="robot-graph-canvas"></div>
+            </section>
           <article class="card">
             <h3>Repository Analyzer (RDE)</h3>
             <p class="muted">
@@ -272,21 +341,163 @@
           </article>
         </section>
 
-        <section class="view" id="bench">
-          <div class="card-grid">
-            <article class="card">
-              <h3>Live Video Stream</h3>
-              <p>Camera feed and visual mismatch analysis.</p>
-            </article>
-            <article class="card">
-              <h3>Audio + Metrics</h3>
-              <p>Motor/servo sound profile and verifier metrics.</p>
-            </article>
-            <article class="card">
-              <h3>Diagnosis</h3>
-              <p>Root cause hypotheses and concrete fix proposals.</p>
-            </article>
+            <aside class="robot-rail robot-right-rail">
+              <!-- Discovered Components Panel (shown first) -->
+              <article class="card full robot-panel" id="robot-discovered-panel">
+                <p class="settings-eyebrow">DISCOVERED</p>
+                <h3>Robot Components</h3>
+                <div id="robot-discovered-components">
+                  <p class="muted">Sync a workspace to discover robot components. The agent will analyze your docs, code, and configs to identify what hardware you have.</p>
+                </div>
+              </article>
+
+              <!-- Live Robot Connection Panel - HIDDEN until components discovered -->
+              <article class="card full robot-panel robot-connection-panel hidden" id="robot-live-panel">
+                <p class="settings-eyebrow">LIVE ROBOT</p>
+                <h3>Connection</h3>
+                <div class="stack-form">
+                  <div class="robot-connection-row">
+                    <label class="muted">Jetson IP</label>
+                    <input id="robot-jetson-ip" type="text" placeholder="192.168.1.100" />
+                  </div>
+                  <div class="robot-connection-row">
+                    <label class="muted">Arm Server Port</label>
+                    <input id="robot-arm-port" type="text" value="8765" />
+                  </div>
+                  <div class="robot-connection-row">
+                    <label class="muted">Camera Server Port</label>
+                    <input id="robot-camera-port" type="text" value="8766" />
+                  </div>
+                  <div class="actions">
+                    <button id="robot-load-config" type="button" class="secondary-action">Load Config</button>
+                    <button id="robot-connect" type="button">Connect</button>
+                  </div>
+                </div>
+                <div id="robot-connection-status" class="robot-status-grid">
+                  <div class="robot-status-item">
+                    <span class="robot-status-dot disconnected" id="robot-arm-status-dot"></span>
+                    <span>Arm Server</span>
+                    <span id="robot-arm-status" class="muted">Disconnected</span>
+                  </div>
+                  <div class="robot-status-item">
+                    <span class="robot-status-dot disconnected" id="robot-camera-status-dot"></span>
+                    <span>Camera Server</span>
+                    <span id="robot-camera-status" class="muted">Disconnected</span>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Demo Features Panel - HIDDEN until connected -->
+              <article class="card full robot-panel robot-demo-panel hidden" id="robot-demo-panel">
+                <p class="settings-eyebrow">DEMO FEATURES</p>
+                <h3>Robot Controls</h3>
+                <div class="robot-demo-grid">
+                  <div class="robot-demo-card">
+                    <h4>Teleoperation</h4>
+                    <p class="muted">Leader arm controls follower</p>
+                    <div class="robot-toggle-row">
+                      <span id="robot-teleop-status">Off</span>
+                      <button id="robot-teleop-toggle" type="button" class="robot-toggle-btn">Enable</button>
+                    </div>
+                  </div>
+                  <div class="robot-demo-card">
+                    <h4>Calibration</h4>
+                    <p class="muted">Calibrate arm joints</p>
+                    <button id="robot-calibrate-btn" type="button">Start Wizard</button>
+                  </div>
+                  <div class="robot-demo-card">
+                    <h4>Recording</h4>
+                    <p class="muted">Record episodes for training</p>
+                    <div class="robot-toggle-row">
+                      <span id="robot-recording-status">Stopped</span>
+                      <button id="robot-record-toggle" type="button" class="robot-toggle-btn">Record</button>
+                    </div>
+                    <p id="robot-episode-count" class="muted">Episodes: 0</p>
+                  </div>
+                  <div class="robot-demo-card">
+                    <h4>Home Position</h4>
+                    <p class="muted">Move arm to home</p>
+                    <button id="robot-home-btn" type="button">Go Home</button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Live Arm State Panel - HIDDEN until connected -->
+              <article class="card full robot-panel hidden" id="robot-arm-panel">
+                <h3>Arm State</h3>
+                <div id="robot-arm-state" class="robot-arm-state">
+                  <p class="muted">Connect to see live joint positions</p>
+                </div>
+              </article>
+
+              <!-- Camera Preview Panel - HIDDEN until connected -->
+              <article class="card full robot-panel hidden" id="robot-camera-panel">
+                <h3>Camera Feed</h3>
+                <div id="robot-camera-preview" class="robot-camera-preview">
+                  <p class="muted">Connect to see camera feed</p>
+                </div>
+              </article>
+
+              <article class="card full robot-panel">
+                <h3>Node Detail</h3>
+                <div id="robot-node-detail" class="robot-detail-panel">
+                  <p class="muted">Select a node in the graph to inspect how it was collected.</p>
+                </div>
+              </article>
+
+              <article class="card full robot-panel">
+                <h3>Part Options</h3>
+                <p class="muted">Requirement-driven options and datasheets appear here so the team can choose what to buy or bind.</p>
+                <div id="robot-option-list" class="robot-option-list"></div>
+              </article>
+
+              <article class="card full robot-panel">
+                <h3>Suggested Tasks</h3>
+                <p class="muted">Mission planner and verifier suggestions can be assigned to teammates and saved to the shared Task Log.</p>
+                <div id="robot-task-suggestions" class="robot-task-list"></div>
+              </article>
+            </aside>
           </div>
+        </section>
+
+        <section class="view" id="bench" style="padding: 0; overflow: hidden;">
+          <button id="bench-back-btn" onclick="document.querySelector('[data-view=workspace]').click()" style="
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 1000;
+            padding: 8px 16px;
+            background: rgba(17, 28, 46, 0.9);
+            border: 1px solid #22324a;
+            border-radius: 8px;
+            color: #9eb1cc;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(8px);
+          ">
+            <span style="font-size: 16px;">&#8592;</span> Back to Forge
+          </button>
+          <!-- Empty state shown until robot is discovered -->
+          <div id="bench-empty-state" class="bench-empty-state">
+            <div class="bench-empty-content">
+              <h2>No Robot Loaded</h2>
+              <p>Go to <strong>My Robot</strong>, select a workspace, and <strong>Sync</strong> to discover your robot components.</p>
+              <p class="muted">Once the agent analyzes your docs and configs, the simulation bench will load automatically.</p>
+              <button onclick="document.querySelector('[data-view=robot]').click()" style="margin-top: 16px;">
+                Go to My Robot
+              </button>
+            </div>
+          </div>
+          <!-- Iframe hidden until robot discovered -->
+          <iframe
+            id="bench-iframe"
+            src="about:blank"
+            style="width: 100%; height: 100%; border: none; display: none;"
+            allow="camera; microphone"
+          ></iframe>
         </section>
 
         <section class="view" id="artifacts">
