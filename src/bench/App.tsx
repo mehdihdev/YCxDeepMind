@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   MujocoProvider,
   MujocoCanvas,
@@ -19,7 +19,8 @@ import { ResizableSplit } from './components/ResizableSplit';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { JointOverlay } from './components/JointOverlay';
 
-const JOINTS = [
+// Joint configurations for different robot types
+const ARM_JOINTS = [
   { name: 'Rotation', label: 'Base', min: -2.2, max: 2.2, default: 0 },
   { name: 'Pitch', label: 'Shoulder', min: -3.14, max: 0.2, default: -1.57 },
   { name: 'Elbow', label: 'Elbow', min: 0, max: 3.14, default: 1.57 },
@@ -28,19 +29,54 @@ const JOINTS = [
   { name: 'Jaw', label: 'Gripper', min: -0.2, max: 2.0, default: 0 },
 ];
 
-const config: SceneConfig = {
-  src: '/bench/robot/',
-  sceneFile: 'scene.xml',
-  homeJoints: JOINTS.map(j => j.default),
-};
+const CAR_JOINTS = [
+  { name: 'motor_fl', label: 'Front Left', min: -50, max: 50, default: 0 },
+  { name: 'motor_fr', label: 'Front Right', min: -50, max: 50, default: 0 },
+  { name: 'motor_bl', label: 'Back Left', min: -50, max: 50, default: 0 },
+  { name: 'motor_br', label: 'Back Right', min: -50, max: 50, default: 0 },
+  { name: 'ultrasonic_servo', label: 'Servo', min: -1.57, max: 1.57, default: 0 },
+];
+
+// Parse URL params to determine robot type
+function getUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    robotType: params.get('robotType') || 'arm',
+    armType: params.get('armType') || 'so100',
+    carType: params.get('carType') || 'elegoo_v4',
+    ip: params.get('ip') || '',
+    armPort: params.get('armPort') || '8765',
+    cameraPort: params.get('cameraPort') || '8766',
+  };
+}
+
+// Default to arm joints for backwards compatibility
+const JOINTS = ARM_JOINTS;
+
+// Scene configs for different robot types
+function getSceneConfig(robotType: string, carType: string): SceneConfig {
+  if (robotType === 'car') {
+    return {
+      src: '/bench/robot/',
+      sceneFile: 'elegoo_car_scene.xml',
+      homeJoints: CAR_JOINTS.map(j => j.default),
+    };
+  }
+  // Default: arm
+  return {
+    src: '/bench/robot/',
+    sceneFile: 'scene.xml',
+    homeJoints: ARM_JOINTS.map(j => j.default),
+  };
+}
 
 const DEFAULT_JETSON_HOST = '10.0.0.42';
 const DEFAULT_JETSON_PORT = 8765;
 const DEFAULT_CAMERA_PORT = 8766;
 const CAMERA_STORAGE_KEY = 'forge-rde-cameras';
 
-function useJointController(jointValues: number[]) {
-  const ctrls = JOINTS.map(j => useCtrl(j.name));
+function useJointController(jointValues: number[], joints: typeof ARM_JOINTS) {
+  const ctrls = joints.map(j => useCtrl(j.name));
   useBeforePhysicsStep(() => {
     ctrls.forEach((ctrl, i) => {
       if (ctrl) ctrl.write(jointValues[i]);
@@ -48,13 +84,14 @@ function useJointController(jointValues: number[]) {
   });
 }
 
-function JointController({ jointValues }: { jointValues: number[] }) {
-  useJointController(jointValues);
+function JointController({ jointValues, joints }: { jointValues: number[], joints: typeof ARM_JOINTS }) {
+  useJointController(jointValues, joints);
   return null;
 }
 
 interface SceneProps {
   jointValues: number[];
+  joints: typeof ARM_JOINTS;
   cameras: VirtualCameraConfig[];
   selectedCameraId: string | null;
   cameraRefs: React.MutableRefObject<Map<string, VirtualCameraHandle>>;
@@ -66,6 +103,7 @@ interface SceneProps {
 
 function Scene({
   jointValues,
+  joints,
   cameras,
   selectedCameraId,
   cameraRefs,
@@ -101,7 +139,7 @@ function Scene({
         maxPolarAngle={Math.PI * 0.8}
         makeDefault
       />
-      <JointController jointValues={jointValues} />
+      <JointController jointValues={jointValues} joints={joints} />
       <ContactShadows position={[0, 0, 0]} opacity={0.5} scale={2} blur={1.5} far={1} />
       <ambientLight intensity={0.6} />
       <directionalLight position={[5, 5, 5]} intensity={1} castShadow />
@@ -127,15 +165,21 @@ function Scene({
 }
 
 function App() {
-  const [jointValues, setJointValues] = useState<number[]>(JOINTS.map(j => j.default));
-  const [actualJointValues, setActualJointValues] = useState<number[]>(JOINTS.map(j => j.default));
+  // Get robot type from URL params
+  const urlParams = useMemo(() => getUrlParams(), []);
+  const robotType = urlParams.robotType;
+  const activeJoints = robotType === 'car' ? CAR_JOINTS : ARM_JOINTS;
+  const config = useMemo(() => getSceneConfig(robotType, urlParams.carType), [robotType, urlParams.carType]);
+
+  const [jointValues, setJointValues] = useState<number[]>(activeJoints.map(j => j.default));
+  const [actualJointValues, setActualJointValues] = useState<number[]>(activeJoints.map(j => j.default));
   const [mode, setMode] = useState<AppMode>('sim');
   const [rawPositions, setRawPositions] = useState<Record<string, number>>({});
 
-  // Connection settings
-  const [jetsonHost, setJetsonHost] = useState(DEFAULT_JETSON_HOST);
-  const [jetsonPort, setJetsonPort] = useState(DEFAULT_JETSON_PORT);
-  const [cameraPort, setCameraPort] = useState(DEFAULT_CAMERA_PORT);
+  // Connection settings - use URL params if provided
+  const [jetsonHost, setJetsonHost] = useState(urlParams.ip || DEFAULT_JETSON_HOST);
+  const [jetsonPort, setJetsonPort] = useState(parseInt(urlParams.armPort) || DEFAULT_JETSON_PORT);
+  const [cameraPort, setCameraPort] = useState(parseInt(urlParams.cameraPort) || DEFAULT_CAMERA_PORT);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [showSettings, setShowSettings] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
@@ -204,7 +248,7 @@ function App() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'positions') {
-          const newValues = JOINTS.map(j => data.positions[j.name] ?? j.default);
+          const newValues = activeJoints.map(j => data.positions[j.name] ?? j.default);
           // In real/calibrate mode, jointValues follow the leader arm
           if (mode === 'real' || mode === 'calibrate') {
             setJointValues(newValues);
@@ -220,7 +264,7 @@ function App() {
             // This maps MuJoCo joint names back to leader joint names with normalized values
             const leaderNames = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper'];
             const fallbackRaw: Record<string, number> = {};
-            JOINTS.forEach((j, i) => {
+            activeJoints.forEach((j, i) => {
               // Normalize calibrated value to [-1, 1] range based on MuJoCo limits
               const val = data.positions[j.name] ?? j.default;
               const normalized = ((val - j.min) / (j.max - j.min)) * 2 - 1;
@@ -317,7 +361,7 @@ function App() {
     if (!teleop.enabled || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     const positionDict: Record<string, number> = {};
-    JOINTS.forEach((joint, i) => {
+    activeJoints.forEach((joint, i) => {
       positionDict[joint.name] = positions[i];
     });
 
@@ -325,7 +369,7 @@ function App() {
       type: 'set_positions',
       positions: positionDict,
     }));
-  }, [teleop.enabled]);
+  }, [teleop.enabled, activeJoints]);
 
   // Teleop: toggle enable
   const toggleTeleop = useCallback(() => {
@@ -352,8 +396,8 @@ function App() {
   }, [mode, teleop.enabled, sendJointPositions]);
 
   const resetJoints = useCallback(() => {
-    setJointValues(JOINTS.map(j => j.default));
-  }, []);
+    setJointValues(activeJoints.map(j => j.default));
+  }, [activeJoints]);
 
   // Camera handlers
   const handleAddCamera = useCallback((camera: VirtualCameraConfig) => {
@@ -456,7 +500,9 @@ function App() {
           </div>
           <div>
             <div style={{ color: '#fff', fontWeight: 600, fontSize: 16 }}>Forge RDE</div>
-            <div style={{ color: '#666', fontSize: 11 }}>SO-ARM100</div>
+            <div style={{ color: '#666', fontSize: 11 }}>
+              {robotType === 'car' ? `ELEGOO ${urlParams.carType || 'Smart Car'}` : `SO-ARM100`}
+            </div>
           </div>
         </div>
 
@@ -728,16 +774,20 @@ function App() {
           {mode !== 'calibrate' && (
             <div style={{ padding: 16, borderBottom: '1px solid #333' }}>
               <div style={{ color: '#666', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', marginBottom: 12, letterSpacing: 1 }}>
-                Joint Positions
+                {robotType === 'car' ? 'Motor Controls' : 'Joint Positions'}
               </div>
-              {JOINTS.map((joint, i) => {
+              {activeJoints.map((joint, i) => {
                 const pct = ((jointValues[i] - joint.min) / (joint.max - joint.min)) * 100;
-                const deg = Math.round((jointValues[i] / Math.PI) * 180);
+                const displayValue = robotType === 'car' && joint.name !== 'ultrasonic_servo'
+                  ? Math.round(jointValues[i]) // Show velocity for car motors
+                  : Math.round((jointValues[i] / Math.PI) * 180); // Show degrees for arm/servo
                 return (
                   <div key={joint.name} style={{ marginBottom: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ color: '#ccc', fontSize: 13 }}>{joint.label}</span>
-                      <span style={{ color: getModeColor(), fontSize: 11, fontFamily: 'monospace' }}>{deg}°</span>
+                      <span style={{ color: getModeColor(), fontSize: 11, fontFamily: 'monospace' }}>
+                        {displayValue}{robotType === 'car' && joint.name !== 'ultrasonic_servo' ? '' : '°'}
+                      </span>
                     </div>
                     <div style={{ position: 'relative', height: 6, background: '#333', borderRadius: 3 }}>
                       <div style={{
@@ -854,7 +904,7 @@ function App() {
           <button
             onClick={() => {
               resetJoints();
-              if (teleop.enabled) sendJointPositions(JOINTS.map(j => j.default));
+              if (teleop.enabled) sendJointPositions(activeJoints.map(j => j.default));
             }}
             disabled={mode !== 'sim' && mode !== 'bench'}
             style={{
@@ -874,7 +924,7 @@ function App() {
           </button>
           <button
             onClick={() => {
-              const newPositions = JOINTS.map(j =>
+              const newPositions = activeJoints.map(j =>
                 j.min + Math.random() * (j.max - j.min) * 0.6 + (j.max - j.min) * 0.2
               );
               setJointValues(newPositions);
@@ -950,6 +1000,7 @@ function App() {
                   >
                     <Scene
                       jointValues={jointValues}
+                      joints={activeJoints}
                       cameras={cameras}
                       selectedCameraId={selectedCameraId}
                       cameraRefs={cameraRefs}
@@ -979,7 +1030,7 @@ function App() {
                 </div>
                 {/* Joint overlay on sim */}
                 <JointOverlay
-                  joints={JOINTS}
+                  joints={activeJoints}
                   positions={jointValues}
                   side="left"
                   label="Target"
@@ -996,7 +1047,7 @@ function App() {
                   autoConnect
                   overlay={
                     <JointOverlay
-                      joints={JOINTS}
+                      joints={activeJoints}
                       positions={actualJointValues}
                       side="right"
                       label="Actual"
@@ -1046,6 +1097,7 @@ function App() {
                   >
                     <Scene
                       jointValues={jointValues}
+                      joints={activeJoints}
                       cameras={cameras}
                       selectedCameraId={selectedCameraId}
                       cameraRefs={cameraRefs}
@@ -1092,7 +1144,7 @@ function App() {
         {/* Diagnostics Panel - show in bench mode with split view */}
         {mode === 'bench' && viewLayout === 'split' && (
           <DiagnosticsPanel
-            joints={JOINTS}
+            joints={activeJoints}
             intendedPositions={jointValues}
             actualPositions={actualJointValues}
             isConnected={connectionStatus === 'connected'}

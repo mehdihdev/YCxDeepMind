@@ -15,11 +15,14 @@ export function createLiveRobotController({ elements, setStatus }) {
   let discoveredComponents = {
     hasJetson: false,
     hasArm: false,
+    hasCar: false,
     hasCamera: false,
     jetsonIp: null,
     armPort: null,
     cameraPort: null,
     armType: null,
+    robotType: null, // "arm" or "car"
+    carType: null,
     cameras: []
   };
 
@@ -82,6 +85,7 @@ export function createLiveRobotController({ elements, setStatus }) {
 
     const hasAny = discoveredComponents.hasJetson ||
                    discoveredComponents.hasArm ||
+                   discoveredComponents.hasCar ||
                    discoveredComponents.hasCamera;
 
     if (!hasAny) {
@@ -91,7 +95,7 @@ export function createLiveRobotController({ elements, setStatus }) {
           <p class="muted" style="font-size: 11px;">Try pointing to:</p>
           <ul style="margin-top: 8px; font-size: 12px; color: var(--color-slate-300);">
             <li>• A folder with robot.config.json</li>
-            <li>• A repo with arm_server.py</li>
+            <li>• A repo with arm_server.py or car_server.py</li>
             <li>• Docs, datasheets, or code files</li>
           </ul>
         </div>
@@ -120,6 +124,16 @@ export function createLiveRobotController({ elements, setStatus }) {
       `;
     }
 
+    if (discoveredComponents.hasCar) {
+      html += `
+        <div class="robot-demo-card">
+          <h4>🚗 Robot Car</h4>
+          <p class="muted">${escapeHtml(discoveredComponents.carType || "Differential Drive")}</p>
+          <p class="muted" style="font-size: 11px;">4-wheel differential drive</p>
+        </div>
+      `;
+    }
+
     if (discoveredComponents.hasCamera) {
       const camCount = discoveredComponents.cameras?.length || 1;
       html += `
@@ -138,16 +152,19 @@ export function createLiveRobotController({ elements, setStatus }) {
 
   // Called when robot graph discovers components (from workspace sync)
   function onComponentsDiscovered(components) {
-    const hasAny = components.hasJetson || components.hasArm || components.hasCamera;
+    const hasAny = components.hasJetson || components.hasArm || components.hasCar || components.hasCamera;
 
     discoveredComponents = {
       hasJetson: components.hasJetson || false,
       hasArm: components.hasArm || false,
+      hasCar: components.hasCar || false,
       hasCamera: components.hasCamera || false,
       jetsonIp: components.jetsonIp || null,
       armPort: components.armPort || "8765",
       cameraPort: components.cameraPort || "8766",
       armType: components.armType || null,
+      robotType: components.robotType || null,
+      carType: components.carType || null,
       cameras: components.cameras || []
     };
 
@@ -174,7 +191,7 @@ export function createLiveRobotController({ elements, setStatus }) {
     const benchEmptyState = document.getElementById("bench-empty-state");
     const benchIframe = document.getElementById("bench-iframe");
 
-    const hasComponents = discoveredComponents.hasArm || discoveredComponents.hasJetson;
+    const hasComponents = discoveredComponents.hasArm || discoveredComponents.hasCar || discoveredComponents.hasJetson;
 
     if (benchEmptyState) {
       benchEmptyState.style.display = hasComponents ? "none" : "flex";
@@ -184,8 +201,10 @@ export function createLiveRobotController({ elements, setStatus }) {
       if (hasComponents) {
         // Build URL with workspace configuration
         const config = {
+          robotType: discoveredComponents.robotType || (discoveredComponents.hasCar ? "car" : "arm"),
           armType: discoveredComponents.armType || "so100",
-          joints: "6",
+          carType: discoveredComponents.carType || "elegoo_v4",
+          joints: discoveredComponents.robotType === "car" ? "5" : "6", // 5 actuators for car (4 motors + servo)
           ip: discoveredComponents.jetsonIp || "",
           armPort: discoveredComponents.armPort || "8765",
           cameraPort: discoveredComponents.cameraPort || "8766"
@@ -675,11 +694,14 @@ export function createLiveRobotController({ elements, setStatus }) {
     discoveredComponents = {
       hasJetson: false,
       hasArm: false,
+      hasCar: false,
       hasCamera: false,
       jetsonIp: null,
       armPort: null,
       cameraPort: null,
       armType: null,
+      robotType: null,
+      carType: null,
       cameras: []
     };
     renderDiscoveredComponents();

@@ -87,11 +87,14 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
     const components = {
       hasJetson: false,
       hasArm: false,
+      hasCar: false,
       hasCamera: false,
       jetsonIp: null,
       armPort: "8765",
       cameraPort: "8766",
       armType: null,
+      robotType: null, // "arm" or "car"
+      carType: null,
       cameras: []
     };
 
@@ -112,11 +115,30 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
         }
       }
 
+      // Detect car/mobile robot nodes (check before arm to prioritize car detection)
+      if (label.includes("elegoo") || label.includes("smart car") || label.includes("robot car") ||
+          label.includes("differential_drive") || label.includes("mobile robot") ||
+          label.includes("wheel") || label.includes("l298n") || label.includes("motor driver") ||
+          description.includes("elegoo") || description.includes("smart car") ||
+          description.includes("differential_drive") || description.includes("4-wheel") ||
+          componentLabel.includes("car") || componentLabel.includes("mobile") || kind === "car") {
+        components.hasCar = true;
+        components.robotType = "car";
+        if (label.includes("elegoo") || description.includes("elegoo")) {
+          components.carType = "elegoo_v4";
+        } else {
+          components.carType = "differential_drive";
+        }
+      }
+
       // Detect arm nodes
       if (label.includes("arm") || label.includes("so-100") || label.includes("so100") ||
           label.includes("leader") || label.includes("follower") ||
           componentLabel.includes("arm") || kind === "arm") {
         components.hasArm = true;
+        if (!components.robotType) {
+          components.robotType = "arm";
+        }
         if (label.includes("so-100") || label.includes("so100") || description.includes("so-100")) {
           components.armType = "SO-100";
         } else if (label.includes("lerobot") || description.includes("lerobot")) {
@@ -126,6 +148,7 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
 
       // Detect camera nodes
       if (label.includes("camera") || label.includes("webcam") || label.includes("realsense") ||
+          label.includes("esp32-cam") || label.includes("esp32cam") ||
           componentLabel.includes("camera") || kind === "camera") {
         components.hasCamera = true;
         components.cameras.push({
@@ -151,6 +174,18 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
           const cameraPortMatch = content.match(/"camera"\s*:\s*\{[^}]*"port"\s*:\s*(\d+)/);
           if (cameraPortMatch) {
             components.cameraPort = cameraPortMatch[1];
+          }
+          // Detect robot type from config
+          const typeMatch = content.match(/"type"\s*:\s*"([^"]+)"/);
+          if (typeMatch) {
+            const configType = typeMatch[1].toLowerCase();
+            if (configType.includes("differential") || configType.includes("car") || configType.includes("mobile")) {
+              components.hasCar = true;
+              components.robotType = "car";
+              components.carType = "elegoo_v4";
+            } else if (configType.includes("arm") || configType.includes("manipulator")) {
+              components.robotType = "arm";
+            }
           }
         }
       }
