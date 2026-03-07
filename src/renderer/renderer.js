@@ -14,6 +14,13 @@ const repoShowMoreButton = document.getElementById("repo-show-more");
 const githubSummary = document.getElementById("github-summary");
 const robotRepoSelect = document.getElementById("robot-repo-select");
 const robotRepoMeta = document.getElementById("robot-repo-meta");
+const artifactGenerateForm = document.getElementById("artifact-generate-form");
+const artifactRepoSelect = document.getElementById("artifact-repo-select");
+const artifactSaveButton = document.getElementById("artifact-save-button");
+const artifactStatus = document.getElementById("artifact-status");
+const artifactTitle = document.getElementById("artifact-title");
+const artifactDescription = document.getElementById("artifact-description");
+const artifactMermaid = document.getElementById("artifact-mermaid");
 
 const teamStorageBadge = document.getElementById("team-storage-badge");
 const teamCreateForm = document.getElementById("team-create-form");
@@ -38,6 +45,12 @@ const settingsGithubStatus = document.getElementById("settings-github-status");
 const settingsGithubDisconnectButton = document.getElementById("settings-github-disconnect");
 const settingsDeleteAccountButton = document.getElementById("settings-delete-account");
 const settingsLogoutButton = document.getElementById("settings-logout");
+const codeLoadForm = document.getElementById("code-load-form");
+const codeRepoSelect = document.getElementById("code-repo-select");
+const codeOpenFolderButton = document.getElementById("code-open-folder");
+const codeFileList = document.getElementById("code-file-list");
+const codeEditorMeta = document.getElementById("code-editor-meta");
+const monacoMount = document.getElementById("monaco-editor");
 
 const analyzeForm = document.getElementById("analyze-form");
 const repoPathInput = document.getElementById("repo-path");
@@ -45,6 +58,7 @@ const analysisOutput = document.getElementById("analysis-output");
 
 const labels = {
   workspace: "Team Workspace",
+  code: "Code Workspace",
   robot: "My Robot",
   bench: "Live Bench",
   artifacts: "Artifacts",
@@ -54,6 +68,10 @@ const labels = {
 let currentSession = { user: null, githubConnected: false };
 let cachedRepos = [];
 let showAllRepos = false;
+let generatedArtifact = null;
+let monacoEditor = null;
+let monacoLoaded = false;
+let currentCodeRepoPath = "";
 let currentTeamState = {
   storage: "unknown",
   teams: [],
@@ -93,6 +111,8 @@ function renderRepos(repos) {
     if (repoShowMoreButton) {
       repoShowMoreButton.style.display = "none";
     }
+    renderRobotRepoSelector();
+    renderCodeRepoSelector();
     return;
   }
 
@@ -129,6 +149,7 @@ function renderRepos(repos) {
   }
 
   renderRobotRepoSelector();
+  renderCodeRepoSelector();
 }
 
 function renderRobotRepoSelector() {
@@ -162,6 +183,8 @@ function renderRobotRepoSelector() {
   });
 
   updateRobotRepoMeta(robotRepoSelect.value || saved);
+  renderArtifactRepoSelector();
+  renderCodeRepoSelector();
 }
 
 function updateRobotRepoMeta(fullName) {
@@ -180,6 +203,62 @@ function updateRobotRepoMeta(fullName) {
   robotRepoMeta.textContent = `${repo.full_name} • ${repo.language || "Unknown"} • ${
     repo.private ? "Private" : "Public"
   }`;
+}
+
+function renderArtifactRepoSelector() {
+  if (!artifactRepoSelect) return;
+
+  const saved = localStorage.getItem("forge_selected_artifact_repo") || "";
+  artifactRepoSelect.innerHTML = "";
+
+  if (!cachedRepos.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No repositories loaded";
+    artifactRepoSelect.appendChild(option);
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a repository";
+  artifactRepoSelect.appendChild(placeholder);
+
+  cachedRepos.forEach((repo) => {
+    const option = document.createElement("option");
+    option.value = repo.full_name;
+    option.textContent = repo.full_name;
+    option.selected = saved === repo.full_name;
+    artifactRepoSelect.appendChild(option);
+  });
+}
+
+function renderCodeRepoSelector() {
+  if (!codeRepoSelect) return;
+
+  const saved = localStorage.getItem("forge_selected_code_repo") || "";
+  codeRepoSelect.innerHTML = "";
+
+  if (!cachedRepos.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No repositories loaded";
+    codeRepoSelect.appendChild(option);
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a repository";
+  codeRepoSelect.appendChild(placeholder);
+
+  cachedRepos.forEach((repo) => {
+    const option = document.createElement("option");
+    option.value = repo.full_name;
+    option.textContent = repo.full_name;
+    option.selected = saved === repo.full_name;
+    codeRepoSelect.appendChild(option);
+  });
 }
 
 function openSignInModal() {
@@ -214,6 +293,119 @@ async function apiJson(path, options = {}) {
     throw new Error(data.error || `Request failed (${res.status})`);
   }
   return data;
+}
+
+function inferLanguage(filePath) {
+  const lower = String(filePath || "").toLowerCase();
+  if (lower.endsWith(".ts")) return "typescript";
+  if (lower.endsWith(".tsx")) return "typescript";
+  if (lower.endsWith(".js")) return "javascript";
+  if (lower.endsWith(".jsx")) return "javascript";
+  if (lower.endsWith(".py")) return "python";
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".md")) return "markdown";
+  if (lower.endsWith(".css")) return "css";
+  if (lower.endsWith(".html")) return "html";
+  if (lower.endsWith(".yml") || lower.endsWith(".yaml")) return "yaml";
+  if (lower.endsWith(".sql")) return "sql";
+  return "plaintext";
+}
+
+async function ensureMonacoLoaded() {
+  if (monacoLoaded) return true;
+  if (!monacoMount) return false;
+
+  try {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+
+    await new Promise((resolve) => {
+      window.require.config({
+        paths: {
+          vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs"
+        }
+      });
+      window.require(["vs/editor/editor.main"], resolve);
+    });
+
+    monacoEditor = window.monaco.editor.create(monacoMount, {
+      value: "// Load a repository, then click a file.",
+      language: "javascript",
+      theme: "vs-dark",
+      automaticLayout: true,
+      minimap: { enabled: true },
+      fontSize: 13
+    });
+    monacoLoaded = true;
+    return true;
+  } catch {
+    if (codeEditorMeta) {
+      codeEditorMeta.textContent =
+        "Could not load Monaco from CDN. Check internet connection and retry.";
+    }
+    return false;
+  }
+}
+
+function renderCodeFiles(files) {
+  codeFileList.innerHTML = "";
+  if (!files.length) {
+    codeFileList.innerHTML = '<li class="empty-list">No files found.</li>';
+    return;
+  }
+  files.forEach((filePath) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<button type="button" class="code-file-btn" data-code-file="${filePath}">${filePath}</button>`;
+    codeFileList.appendChild(li);
+  });
+}
+
+async function loadCodeTreeByPath(repoPath) {
+  const data = await apiJson(`/api/code/tree?repoPath=${encodeURIComponent(repoPath)}`, {
+    method: "GET"
+  });
+  currentCodeRepoPath = data.repoPath;
+  renderCodeFiles(data.files || []);
+  if (codeEditorMeta) {
+    codeEditorMeta.textContent = `Loaded ${data.files.length} files from ${data.repoPath}`;
+  }
+  await ensureMonacoLoaded();
+}
+
+async function loadCodeFile(filePath) {
+  if (!currentCodeRepoPath || !filePath) return;
+
+  try {
+    const data = await apiJson(
+      `/api/code/file?repoPath=${encodeURIComponent(currentCodeRepoPath)}&filePath=${encodeURIComponent(
+        filePath
+      )}`,
+      { method: "GET" }
+    );
+
+    const ok = await ensureMonacoLoaded();
+    if (ok && monacoEditor) {
+      const model = window.monaco.editor.createModel(
+        data.content,
+        inferLanguage(filePath),
+        window.monaco.Uri.parse(`inmemory://forge/${filePath}`)
+      );
+      monacoEditor.setModel(model);
+    }
+
+    if (codeEditorMeta) {
+      codeEditorMeta.textContent = `${data.repoPath} • ${data.filePath}`;
+    }
+    setStatus(`Opened ${filePath}`);
+  } catch (err) {
+    setStatus(err.message, true);
+  }
 }
 
 function renderTeamState(state) {
@@ -425,6 +617,132 @@ if (robotRepoSelect) {
     const selected = robotRepoSelect.value;
     localStorage.setItem("forge_selected_robot_repo", selected);
     updateRobotRepoMeta(selected);
+  });
+}
+
+if (artifactRepoSelect) {
+  artifactRepoSelect.addEventListener("change", () => {
+    localStorage.setItem("forge_selected_artifact_repo", artifactRepoSelect.value);
+  });
+}
+
+if (codeRepoSelect) {
+  codeRepoSelect.addEventListener("change", () => {
+    localStorage.setItem("forge_selected_code_repo", codeRepoSelect.value);
+  });
+}
+
+if (artifactGenerateForm) {
+  artifactGenerateForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const repoFullName = artifactRepoSelect?.value || "";
+    if (!repoFullName) {
+      setStatus("Select a repository for artifact generation.", true);
+      return;
+    }
+
+    try {
+      setStatus("Generating integration diagram...");
+      const data = await apiJson("/api/artifacts/generate", {
+        method: "POST",
+        body: JSON.stringify({ repoFullName })
+      });
+      generatedArtifact = data.artifact || null;
+
+      if (artifactTitle) artifactTitle.textContent = generatedArtifact?.title || "Generated artifact";
+      if (artifactDescription) {
+        artifactDescription.textContent =
+          generatedArtifact?.description || "Integration diagram generated.";
+      }
+      if (artifactMermaid) {
+        artifactMermaid.textContent = generatedArtifact?.mermaid || "";
+      }
+      if (artifactStatus) {
+        artifactStatus.textContent = `Generated at ${new Date(
+          generatedArtifact.generatedAt
+        ).toLocaleTimeString()}`;
+      }
+      setStatus("Artifact generated");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (artifactSaveButton) {
+  artifactSaveButton.addEventListener("click", async () => {
+    if (!generatedArtifact) {
+      setStatus("Generate an artifact first.", true);
+      return;
+    }
+
+    try {
+      setStatus("Saving artifact to team workspace...");
+      await apiJson("/api/team/artifacts", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "plan",
+          title: generatedArtifact.title,
+          summary: generatedArtifact.description,
+          payload: generatedArtifact
+        })
+      });
+      await refreshTeamState();
+      if (artifactStatus) {
+        artifactStatus.textContent = "Saved to Team Artifacts.";
+      }
+      setStatus("Artifact saved");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (codeLoadForm) {
+  codeLoadForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const repoFullName = codeRepoSelect?.value || "";
+    if (!repoFullName) {
+      setStatus("Select a repository first.", true);
+      return;
+    }
+
+    try {
+      setStatus("Loading repository file tree...");
+      const data = await apiJson(
+        `/api/code/tree/by-repo?repoFullName=${encodeURIComponent(repoFullName)}`,
+        { method: "GET" }
+      );
+      await loadCodeTreeByPath(data.repoPath);
+      setStatus("Repository loaded");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (codeOpenFolderButton) {
+  codeOpenFolderButton.addEventListener("click", async () => {
+    if (!window.forgeAPI?.openFolder) {
+      setStatus("Open Folder is only available in desktop mode.", true);
+      return;
+    }
+
+    try {
+      const result = await window.forgeAPI.openFolder();
+      if (!result || result.canceled || !result.path) {
+        return;
+      }
+
+      setStatus("Loading selected folder...");
+      await loadCodeTreeByPath(result.path);
+      if (codeEditorMeta) {
+        codeEditorMeta.textContent = `Opened folder: ${result.path}`;
+      }
+      setStatus("Folder loaded");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
   });
 }
 
@@ -642,5 +960,9 @@ document.addEventListener("click", (event) => {
       .catch((err) => {
         setStatus(err.message, true);
       });
+  }
+
+  if (target instanceof HTMLElement && target.dataset.codeFile) {
+    loadCodeFile(target.dataset.codeFile);
   }
 });

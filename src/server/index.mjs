@@ -24,6 +24,11 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "";
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY || "";
+const NANO_BANANA_MODEL = process.env.NANO_BANANA_MODEL || "gemini-3.1-flash-image-preview";
+const GOOGLE_GENAI_BASE_URL =
+  process.env.GOOGLE_GENAI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta";
+const LOCAL_REPOS_ROOT = process.env.LOCAL_REPOS_ROOT || "";
 const GITHUB_TOKENS_TABLE = "github_tokens";
 
 const supabaseApiKey = SUPABASE_SECRET_KEY || SUPABASE_PUBLISHABLE_KEY;
@@ -401,6 +406,178 @@ async function analyzeRepo(rootPath) {
   };
 }
 
+const CODE_IGNORED_DIRS = new Set([
+  ".git",
+  "node_modules",
+  ".next",
+  "dist",
+  "build",
+  ".pnpm-store",
+  ".idea",
+  ".vscode"
+]);
+
+function normalizeRepoPath(repoPathRaw) {
+  return path.resolve(String(repoPathRaw || "").trim());
+}
+
+function safeJoinRepoPath(repoPath, relativePath) {
+  const absolute = path.resolve(repoPath, relativePath);
+  const normalizedRepo = `${repoPath}${path.sep}`;
+  if (absolute !== repoPath && !absolute.startsWith(normalizedRepo)) {
+    throw new Error("Invalid file path.");
+  }
+  return absolute;
+}
+
+async function listRepoFiles(repoPath) {
+  const files = [];
+
+  async function walk(currentDir) {
+    const entries = await fs.readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) {
+        if (entry.name !== ".env.example" && entry.name !== ".env") {
+          continue;
+        }
+      }
+      if (entry.isDirectory() && CODE_IGNORED_DIRS.has(entry.name)) {
+        continue;
+      }
+
+      const fullPath = path.join(currentDir, entry.name);
+      const relPath = path.relative(repoPath, fullPath).split(path.sep).join("/");
+
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else {
+        files.push(relPath);
+      }
+    }
+  }
+
+  await walk(repoPath);
+  files.sort((a, b) => a.localeCompare(b));
+  return files;
+}
+
+async function resolveRepoFullNameToLocalPath(repoFullName) {
+  const [owner, repo] = String(repoFullName || "").split("/");
+  if (!owner || !repo) {
+    throw new Error("repoFullName must be in owner/repo format.");
+  }
+
+  const candidates = [];
+  if (LOCAL_REPOS_ROOT) {
+    candidates.push(path.resolve(LOCAL_REPOS_ROOT, owner, repo));
+    candidates.push(path.resolve(LOCAL_REPOS_ROOT, repo));
+  }
+
+  const cwd = process.cwd();
+  if (path.basename(cwd) === repo) {
+    candidates.push(cwd);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const stat = await fs.stat(candidate);
+      if (stat.isDirectory()) {
+        return candidate;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+
+  throw new Error(
+    `No local checkout found for ${repoFullName}. Set LOCAL_REPOS_ROOT in .env to your repos directory.`
+  );
+}
+
+function extractTextParts(apiResponse) {
+  const candidates = apiResponse?.candidates || [];
+  const parts = candidates.flatMap((candidate) => candidate?.content?.parts || []);
+  return parts
+    .filter((part) => typeof part?.text === "string" && part.text.trim())
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+}
+
+function parseJsonFromModelText(text) {
+  const fenced = text.match(/```json\\s*([\\s\\S]*?)```/i);
+  const raw = fenced?.[1] || text;
+  return JSON.parse(raw);
+}
+
+async function generateIntegrationDiagramWithNanoBanana(repoFullName) {
+  if (!GOOGLE_AI_API_KEY) {
+    throw new Error("Missing GOOGLE_AI_API_KEY (or GEMINI_API_KEY).");
+  }
+
+  const prompt = `You are generating one engineering artifact for a robotics team workspace.
+Return ONLY JSON with this exact shape:
+{
+  "title": "string",
+  "description": "string",
+  "mermaid": "string",
+  "labels": ["string", "string", "string", "string"]
+}
+
+Task:
+- Create a polished labeled integration diagram for repo "${repoFullName}".
+- Context must include: ELEGOO car base, LeRobot arm, Jetson NX, camera/audio input, Robot Graph, Build Planner, Verifier, and patch/rerun loop.
+- Mermaid must be valid flowchart syntax with LR direction.
+- Keep description concise (<= 200 chars).
+- No markdown, no backticks, JSON only.`;
+
+  const endpoint = `${GOOGLE_GENAI_BASE_URL}/models/${encodeURIComponent(
+    NANO_BANANA_MODEL
+  )}:generateContent`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": GOOGLE_AI_API_KEY
+    },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`Nano Banana request failed (${response.status}): ${errText}`);
+  }
+
+  const data = await response.json();
+  const text = extractTextParts(data);
+  if (!text) {
+    throw new Error(
+      "Nano Banana returned no text content. Try a model that supports text output for this endpoint."
+    );
+  }
+
+  const parsed = parseJsonFromModelText(text);
+  if (!parsed?.title || !parsed?.description || !parsed?.mermaid) {
+    throw new Error("Nano Banana response was missing required artifact fields.");
+  }
+
+  return {
+    title: String(parsed.title),
+    description: String(parsed.description),
+    mermaid: String(parsed.mermaid),
+    labels: Array.isArray(parsed.labels) ? parsed.labels.map((v) => String(v)) : [],
+    generatedAt: new Date().toISOString(),
+    generatedBy: {
+      provider: "google",
+      product: "nano-banana",
+      model: NANO_BANANA_MODEL
+    }
+  };
+}
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "forge-rde-server", appUrl: APP_URL });
 });
@@ -656,6 +833,76 @@ app.post("/api/rde/analyze", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/code/tree", requireAuth, async (req, res) => {
+  const repoPathRaw = String(req.query.repoPath || "");
+  if (!repoPathRaw) {
+    res.status(400).json({ error: "repoPath is required." });
+    return;
+  }
+
+  try {
+    const repoPath = normalizeRepoPath(repoPathRaw);
+    const stat = await fs.stat(repoPath);
+    if (!stat.isDirectory()) {
+      res.status(400).json({ error: "repoPath must be a directory." });
+      return;
+    }
+
+    const files = await listRepoFiles(repoPath);
+    res.json({ repoPath, files });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to load code tree." });
+  }
+});
+
+app.get("/api/code/file", requireAuth, async (req, res) => {
+  const repoPathRaw = String(req.query.repoPath || "");
+  const filePathRaw = String(req.query.filePath || "");
+  if (!repoPathRaw || !filePathRaw) {
+    res.status(400).json({ error: "repoPath and filePath are required." });
+    return;
+  }
+
+  try {
+    const repoPath = normalizeRepoPath(repoPathRaw);
+    const targetPath = safeJoinRepoPath(repoPath, filePathRaw);
+    const stat = await fs.stat(targetPath);
+    if (!stat.isFile()) {
+      res.status(400).json({ error: "Requested path is not a file." });
+      return;
+    }
+    if (stat.size > 1_000_000) {
+      res.status(400).json({ error: "File too large for inline editor preview (>1MB)." });
+      return;
+    }
+
+    const content = await fs.readFile(targetPath, "utf-8");
+    res.json({
+      repoPath,
+      filePath: filePathRaw,
+      content
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to load file content." });
+  }
+});
+
+app.get("/api/code/tree/by-repo", requireAuth, async (req, res) => {
+  const repoFullName = String(req.query.repoFullName || "").trim();
+  if (!repoFullName) {
+    res.status(400).json({ error: "repoFullName is required." });
+    return;
+  }
+
+  try {
+    const repoPath = await resolveRepoFullNameToLocalPath(repoFullName);
+    const files = await listRepoFiles(repoPath);
+    res.json({ repoPath, repoFullName, files });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to resolve local repository." });
+  }
+});
+
 app.get("/api/team/state", requireAuth, async (req, res) => {
   try {
     const teamState = await getTeamState(req.session);
@@ -888,6 +1135,7 @@ app.post("/api/team/artifacts", requireAuth, async (req, res) => {
   const type = String(req.body?.type || "").trim();
   const title = String(req.body?.title || "").trim();
   const summary = String(req.body?.summary || "").trim();
+  const payload = req.body?.payload && typeof req.body.payload === "object" ? req.body.payload : {};
   if (!["run", "fix", "plan"].includes(type)) {
     res.status(400).json({ error: "type must be one of run, fix, plan." });
     return;
@@ -916,7 +1164,7 @@ app.post("/api/team/artifacts", requireAuth, async (req, res) => {
       type,
       title,
       summary,
-      payload: {},
+      payload,
       created_by_user_id: req.session.user.id
     });
   if (insertArtifact.error) {
@@ -930,6 +1178,23 @@ app.post("/api/team/artifacts", requireAuth, async (req, res) => {
     return;
   }
   res.json({ ok: true, storage: "supabase" });
+});
+
+app.post("/api/artifacts/generate", requireAuth, async (req, res) => {
+  const repoFullName = String(req.body?.repoFullName || "").trim();
+  if (!repoFullName) {
+    res.status(400).json({ error: "repoFullName is required." });
+    return;
+  }
+
+  try {
+    const diagram = await generateIntegrationDiagramWithNanoBanana(repoFullName);
+    res.json({ ok: true, artifact: diagram });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Artifact generation failed with Nano Banana."
+    });
+  }
 });
 
 app.use(express.static(rendererDir));

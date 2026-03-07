@@ -16,6 +16,7 @@
         <p class="tagline">Robotics Development Environment</p>
         <nav class="nav">
           <button class="nav-item active" data-view="workspace">Team Workspace</button>
+          <button class="nav-item" data-view="code">Code Workspace</button>
           <button class="nav-item" data-view="robot">My Robot</button>
           <button class="nav-item" data-view="bench">Live Bench</button>
           <button class="nav-item" data-view="artifacts">Artifacts</button>
@@ -114,6 +115,33 @@
           </div>
         </section>
 
+        <section class="view" id="code">
+          <article class="card full">
+            <h3>Code Workspace</h3>
+            <p class="muted">Browse local repository files and inspect code in an embedded editor.</p>
+            <form id="code-load-form" class="stack-form">
+              <label for="code-repo-select" class="muted">Source repository</label>
+              <select id="code-repo-select">
+                <option value="">No repositories loaded</option>
+              </select>
+              <div class="actions">
+                <button type="submit">Load Repository Files</button>
+                <button id="code-open-folder" type="button" class="secondary-action">Open Folder…</button>
+              </div>
+            </form>
+            <div class="code-layout">
+              <aside class="code-files">
+                <h4>Files</h4>
+                <ul id="code-file-list" class="simple-list"></ul>
+              </aside>
+              <div class="code-editor-wrap">
+                <p id="code-editor-meta" class="muted">Load a repository and select a file.</p>
+                <div id="monaco-editor" class="monaco-editor"></div>
+              </div>
+            </div>
+          </article>
+        </section>
+
         <section class="view" id="robot">
           <article class="card">
             <h3>Repository Analyzer (RDE)</h3>
@@ -157,8 +185,27 @@
 
         <section class="view" id="artifacts">
           <article class="card full">
-            <h3>Generated Engineering Artifacts</h3>
-            <p>System diagrams, failure overlays, and benchmark outputs.</p>
+            <h3>Artifact Generator</h3>
+            <p class="muted">Nano Banana 2 workflow: generate one polished integration diagram the team can save.</p>
+            <div class="team-grid">
+              <div class="team-panel">
+                <form id="artifact-generate-form" class="stack-form">
+                  <label for="artifact-repo-select" class="muted">Source repository</label>
+                  <select id="artifact-repo-select">
+                    <option value="">No repositories loaded</option>
+                  </select>
+                  <button type="submit">Generate Integration Diagram</button>
+                </form>
+                <button id="artifact-save-button" type="button" class="secondary-action">Save to Team Artifacts</button>
+                <p id="artifact-status" class="muted">Generate a diagram to preview and save.</p>
+              </div>
+              <div class="team-panel">
+                <h4 id="artifact-title">No artifact generated</h4>
+                <p id="artifact-description" class="muted">The generated integration diagram will appear below.</p>
+                <pre id="artifact-mermaid" class="output">flowchart LR
+  A["Generate diagram"] --> B["Preview here"]</pre>
+              </div>
+            </div>
           </article>
         </section>
 

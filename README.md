@@ -30,6 +30,9 @@ Set these in `.env`:
 - `SESSION_SECRET`
 - `SESSION_TTL_DAYS` (default 30)
 - `SUPABASE_SERVICE_ROLE_KEY` (needed to persist/hydrate GitHub provider tokens like `forge-server`)
+- `GOOGLE_AI_API_KEY` (required for Artifact Generator via Nano Banana/Gemini API)
+- `NANO_BANANA_MODEL` (default `gemini-3.1-flash-image-preview`)
+- `LOCAL_REPOS_ROOT` (required for Code Workspace repo selector to resolve local checkouts)
 
 For GitHub repos through Supabase OAuth, ensure your Supabase GitHub provider is configured and provider tokens are enabled.
 
@@ -45,6 +48,8 @@ Local login sessions are persisted on disk at:
 - Pull authenticated GitHub repositories (`/api/github/repos`).
 - RDE-style repository scan endpoint (`/api/rde/analyze`) for quick file/type stats.
 - Team workspace endpoints/UI: create/join/switch team, members, tasks, runs, fixes.
+- Artifact generator endpoint wired to Google AI (Nano Banana model configurable via env).
+- Code Workspace file browser/editor with GitHub-repo selector to local checkout resolution.
 
 ## Team DB Setup
 

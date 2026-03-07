@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
@@ -60,6 +60,7 @@ function startServer() {
 
 function createWindow() {
   const win = new BrowserWindow({
+    title: "Forge RDE",
     width: 1400,
     height: 900,
     minWidth: 1024,
@@ -89,6 +90,17 @@ app.whenReady().then(() => {
       version: app.getVersion(),
       platform: process.platform
     };
+  });
+
+  ipcMain.handle("app:open-folder", async () => {
+    const result = await dialog.showOpenDialog({
+      title: "Open Repository Folder",
+      properties: ["openDirectory", "createDirectory"]
+    });
+    if (result.canceled || !result.filePaths?.length) {
+      return { canceled: true };
+    }
+    return { canceled: false, path: result.filePaths[0] };
   });
 
   if (USE_REMOTE) {
