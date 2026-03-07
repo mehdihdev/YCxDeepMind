@@ -1,88 +1,95 @@
-const navButtons = Array.from(document.querySelectorAll(".nav-item"));
-const views = Array.from(document.querySelectorAll(".view"));
-const title = document.getElementById("view-title");
-const meta = document.getElementById("meta");
-const statusText = document.getElementById("status-text");
+import { apiJson, escapeHtml, setHidden } from "./lib/utils.js";
+import { createTeamController } from "./modules/team.js";
+import { createCodeController } from "./modules/code.js";
+import { createArtifactController } from "./modules/artifacts.js";
+import { createRobotController } from "./modules/robot.js";
 
-const accountSignInButton = document.getElementById("account-signin");
-const accountSummary = document.getElementById("account-summary");
-const accountName = document.getElementById("account-name");
-const accountEmail = document.getElementById("account-email");
-const sidebarLogoutButton = document.getElementById("sidebar-logout");
-const loginForm = document.getElementById("login-form");
-const signInModal = document.getElementById("signin-modal");
-const githubConnectButton = document.getElementById("github-connect");
-const reposRefreshButton = document.getElementById("repos-refresh");
-const repoGrid = document.getElementById("repo-grid");
-const repoShowMoreButton = document.getElementById("repo-show-more");
-const githubSummary = document.getElementById("github-summary");
-const robotRepoSelect = document.getElementById("robot-repo-select");
-const robotRepoMeta = document.getElementById("robot-repo-meta");
-const robotRefreshButton = document.getElementById("robot-refresh-button");
-const robotGraphRevision = document.getElementById("robot-graph-revision");
-const robotSummaryGrid = document.getElementById("robot-summary-grid");
-const robotEdgeList = document.getElementById("robot-edge-list");
-const robotNodeGrid = document.getElementById("robot-node-grid");
-const robotGraphOutput = document.getElementById("robot-graph-output");
-const robotPlanForm = document.getElementById("robot-plan-form");
-const robotObjectiveInput = document.getElementById("robot-objective");
-const robotPlanOutput = document.getElementById("robot-plan-output");
-const robotVerifyForm = document.getElementById("robot-verify-form");
-const robotObservationsInput = document.getElementById("robot-observations");
-const robotVerifyOutput = document.getElementById("robot-verify-output");
-const robotDiscoveryForm = document.getElementById("robot-discovery-form");
-const robotDiscoveryQueryInput = document.getElementById("robot-discovery-query");
-const robotDiscoveryList = document.getElementById("robot-discovery-list");
-const artifactGenerateForm = document.getElementById("artifact-generate-form");
-const artifactRepoSelect = document.getElementById("artifact-repo-select");
-const artifactSaveButton = document.getElementById("artifact-save-button");
-const artifactStatus = document.getElementById("artifact-status");
-const artifactTitle = document.getElementById("artifact-title");
-const artifactDescription = document.getElementById("artifact-description");
-const artifactMermaidRender = document.getElementById("artifact-mermaid-render");
-const artifactMermaid = document.getElementById("artifact-mermaid");
+const byId = (id) => document.getElementById(id);
 
-const teamStorageBadge = document.getElementById("team-storage-badge");
-const teamOpenModalButton = document.getElementById("team-open-modal");
-const teamCreateForm = document.getElementById("team-create-form");
-const teamJoinForm = document.getElementById("team-join-form");
-const teamSwitchForm = document.getElementById("team-switch-form");
-const teamSelect = document.getElementById("team-select");
-const teamPillList = document.getElementById("team-pill-list");
-const activeTeamMeta = document.getElementById("active-team-meta");
-const membersList = document.getElementById("team-members-list");
-
-const taskForm = document.getElementById("team-task-form");
-const taskTitleInput = document.getElementById("team-task-title");
-const taskAssigneeInput = document.getElementById("team-task-assignee");
-const taskList = document.getElementById("team-task-list");
-
-const artifactList = document.getElementById("team-artifact-list");
-const settingsProfileForm = document.getElementById("settings-profile-form");
-const settingsFirstNameInput = document.getElementById("settings-first-name");
-const settingsPasswordForm = document.getElementById("settings-password-form");
-const settingsPasswordInput = document.getElementById("settings-password");
-const settingsGithubStatus = document.getElementById("settings-github-status");
-const settingsGithubDisconnectButton = document.getElementById("settings-github-disconnect");
-const settingsDeleteAccountButton = document.getElementById("settings-delete-account");
-const settingsLogoutButton = document.getElementById("settings-logout");
-const codeLoadForm = document.getElementById("code-load-form");
-const codeRepoSelect = document.getElementById("code-repo-select");
-const codeOpenFolderButton = document.getElementById("code-open-folder");
-const codeFileList = document.getElementById("code-file-list");
-const codeEditorMeta = document.getElementById("code-editor-meta");
-const monacoMount = document.getElementById("monaco-editor");
-const visualizerLoadForm = document.getElementById("visualizer-load-form");
-const visualizerRepoSelect = document.getElementById("visualizer-repo-select");
-const visualizerOpenFolderButton = document.getElementById("visualizer-open-folder");
-const visualizerStats = document.getElementById("visualizer-stats");
-const visualizerGraphMount = document.getElementById("visualizer-graph");
-const teamModal = document.getElementById("team-modal");
+const elements = {
+  navButtons: Array.from(document.querySelectorAll(".nav-item")),
+  views: Array.from(document.querySelectorAll(".view")),
+  title: byId("view-title"),
+  meta: byId("meta"),
+  statusText: byId("status-text"),
+  accountSignInButton: byId("account-signin"),
+  accountSummary: byId("account-summary"),
+  accountName: byId("account-name"),
+  accountEmail: byId("account-email"),
+  sidebarLogoutButton: byId("sidebar-logout"),
+  loginForm: byId("login-form"),
+  signInModal: byId("signin-modal"),
+  githubConnectButton: byId("github-connect"),
+  reposRefreshButton: byId("repos-refresh"),
+  repoGrid: byId("repo-grid"),
+  repoShowMoreButton: byId("repo-show-more"),
+  githubSummary: byId("github-summary"),
+  robotRepoSelect: byId("robot-repo-select"),
+  robotRepoMeta: byId("robot-repo-meta"),
+  robotOpenFolderButton: byId("robot-open-folder-button"),
+  robotRefreshButton: byId("robot-refresh-button"),
+  robotSourceBadge: byId("robot-source-badge"),
+  robotGraphMeta: byId("robot-graph-meta"),
+  robotGraphRevision: byId("robot-graph-revision"),
+  robotSummaryGrid: byId("robot-summary-grid"),
+  robotGraphMount: byId("robot-graph"),
+  robotPlanForm: byId("robot-plan-form"),
+  robotObjectiveInput: byId("robot-objective"),
+  robotMissionBoard: byId("robot-mission-board"),
+  robotRequirementForm: byId("robot-requirement-form"),
+  robotRequirementTitleInput: byId("robot-requirement-title"),
+  robotRequirementDescriptionInput: byId("robot-requirement-description"),
+  robotRequirementList: byId("robot-requirement-list"),
+  robotVerifyForm: byId("robot-verify-form"),
+  robotObservationsInput: byId("robot-observations"),
+  robotVerifierRuns: byId("robot-verifier-runs"),
+  robotNodeDetail: byId("robot-node-detail"),
+  robotOptionList: byId("robot-option-list"),
+  robotTaskSuggestions: byId("robot-task-suggestions"),
+  artifactGenerateForm: byId("artifact-generate-form"),
+  artifactRepoSelect: byId("artifact-repo-select"),
+  artifactSaveButton: byId("artifact-save-button"),
+  artifactStatus: byId("artifact-status"),
+  artifactTitle: byId("artifact-title"),
+  artifactDescription: byId("artifact-description"),
+  artifactMermaidRender: byId("artifact-mermaid-render"),
+  artifactMermaid: byId("artifact-mermaid"),
+  teamStorageBadge: byId("team-storage-badge"),
+  teamOpenModalButton: byId("team-open-modal"),
+  teamCreateForm: byId("team-create-form"),
+  teamJoinForm: byId("team-join-form"),
+  teamSwitchForm: byId("team-switch-form"),
+  teamSelect: byId("team-select"),
+  teamPillList: byId("team-pill-list"),
+  activeTeamMeta: byId("active-team-meta"),
+  membersList: byId("team-members-list"),
+  teamTaskForm: byId("team-task-form"),
+  taskTitleInput: byId("team-task-title"),
+  taskAssigneeInput: byId("team-task-assignee"),
+  taskList: byId("team-task-list"),
+  artifactList: byId("team-artifact-list"),
+  teamModal: byId("team-modal"),
+  teamNameInput: byId("team-name"),
+  teamInviteCodeInput: byId("team-invite-code"),
+  settingsProfileForm: byId("settings-profile-form"),
+  settingsFirstNameInput: byId("settings-first-name"),
+  settingsPasswordForm: byId("settings-password-form"),
+  settingsPasswordInput: byId("settings-password"),
+  settingsGithubStatus: byId("settings-github-status"),
+  settingsGithubDisconnectButton: byId("settings-github-disconnect"),
+  settingsDeleteAccountButton: byId("settings-delete-account"),
+  settingsLogoutButton: byId("settings-logout"),
+  codeLoadForm: byId("code-load-form"),
+  codeRepoSelect: byId("code-repo-select"),
+  codeOpenFolderButton: byId("code-open-folder"),
+  codeFileList: byId("code-file-list"),
+  codeEditorMeta: byId("code-editor-meta"),
+  monacoMount: byId("monaco-editor")
+};
 
 const labels = {
   workspace: "Team Workspace",
   code: "Code Workspace",
-  visualizer: "Repository Visualizer",
   robot: "My Robot",
   bench: "Live Bench",
   artifacts: "Artifacts",
@@ -92,1564 +99,336 @@ const labels = {
 let currentSession = { user: null, githubConnected: false };
 let cachedRepos = [];
 let showAllRepos = false;
-let generatedArtifact = null;
-let monacoEditor = null;
-let monacoLoaded = false;
-let mermaidLoaded = false;
-let visLoaded = false;
-let visNetwork = null;
-let currentCodeRepoPath = "";
-let currentRobotGraph = null;
-let currentTeamState = {
-  storage: "unknown",
-  teams: [],
-  activeTeamId: null,
-  members: [],
-  tasks: [],
-  artifacts: []
-};
-
-function setActiveView(viewId) {
-  navButtons.forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.view === viewId);
-  });
-
-  views.forEach((view) => {
-    view.classList.toggle("active", view.id === viewId);
-    if (view.id === viewId) {
-      view.classList.remove("section-animate");
-      void view.offsetWidth;
-      view.classList.add("section-animate");
-    }
-  });
-
-  title.textContent = labels[viewId] || "Forge RDE";
-}
 
 function setStatus(message, isError = false) {
-  statusText.textContent = message;
-  statusText.style.color = isError ? "#fca5a5" : "#9eb1cc";
+  if (!elements.statusText) return;
+  elements.statusText.textContent = message || "";
+  elements.statusText.classList.toggle("text-rose-300", Boolean(isError));
+  elements.statusText.classList.toggle("text-slate-400", !isError);
 }
 
-function renderRepos(repos) {
-  cachedRepos = repos;
-  repoGrid.innerHTML = "";
+function setActiveView(viewId) {
+  for (const button of elements.navButtons) {
+    button.classList.toggle("active", button.dataset.view === viewId);
+  }
+  for (const view of elements.views) {
+    view.classList.toggle("active", view.id === viewId);
+  }
+  if (elements.title) {
+    elements.title.textContent = labels[viewId] || "Forge RDE";
+  }
+}
+
+function renderRepoGrid(repos) {
+  if (!elements.repoGrid) return;
   if (!repos.length) {
-    repoGrid.innerHTML = '<div class="empty-repo">No repositories found yet.</div>';
-    if (repoShowMoreButton) {
-      repoShowMoreButton.style.display = "none";
+    elements.repoGrid.innerHTML = '<div class="empty-repo">No repositories loaded yet.</div>';
+    if (elements.repoShowMoreButton) {
+      elements.repoShowMoreButton.style.display = "none";
     }
-    renderRobotRepoSelector();
-    renderCodeRepoSelector();
-    renderVisualizerRepoSelector();
     return;
   }
 
-  const visibleRepos = showAllRepos ? repos : repos.slice(0, 6);
-  visibleRepos.forEach((repo) => {
-    const card = document.createElement("a");
-    card.className = "repo-card";
-    card.href = repo.html_url;
-    card.target = "_blank";
-    card.rel = "noreferrer";
-    card.innerHTML = `
-      <div class="repo-card-top">
-        <p class="repo-name">${repo.name}</p>
-        <span class="repo-visibility">${repo.private ? "Private" : "Public"}</span>
-      </div>
-      <p class="repo-updated">${repo.updated || "Updated recently"}</p>
-      <p class="repo-description">${repo.description || "No description provided."}</p>
-      <div class="repo-meta">
-        <span>${repo.language || "Unknown"}</span>
-        <span>★ ${repo.stars ?? 0}</span>
-        <span>⑂ ${repo.forks ?? 0}</span>
-      </div>
-    `;
-    repoGrid.appendChild(card);
-  });
+  const visible = showAllRepos ? repos : repos.slice(0, 6);
+  elements.repoGrid.innerHTML = visible
+    .map(
+      (repo) => `<a class="repo-card" href="${escapeHtml(repo.html_url || "#")}" target="_blank" rel="noreferrer">
+        <div class="repo-card-top">
+          <p class="repo-name">${escapeHtml(repo.name || repo.full_name)}</p>
+          <span class="repo-visibility">${escapeHtml(repo.private ? "Private" : "Public")}</span>
+        </div>
+        <p class="repo-updated">${escapeHtml(repo.updated || "Updated recently")}</p>
+        <p class="repo-description">${escapeHtml(repo.description || "No description provided.")}</p>
+        <div class="repo-meta">
+          <span>${escapeHtml(repo.language || "Unknown")}</span>
+          <span>★ ${escapeHtml(String(repo.stars ?? 0))}</span>
+          <span>⑂ ${escapeHtml(String(repo.forks ?? 0))}</span>
+        </div>
+      </a>`
+    )
+    .join("");
 
-  if (repoShowMoreButton) {
+  if (elements.repoShowMoreButton) {
     if (repos.length <= 6) {
-      repoShowMoreButton.style.display = "none";
+      elements.repoShowMoreButton.style.display = "none";
     } else {
-      repoShowMoreButton.style.display = "inline-flex";
-      repoShowMoreButton.textContent = showAllRepos ? "Show less" : "Show more";
+      elements.repoShowMoreButton.style.display = "inline-flex";
+      elements.repoShowMoreButton.textContent = showAllRepos ? "Show less" : "Show more";
     }
   }
-
-  renderRobotRepoSelector();
-  renderCodeRepoSelector();
-  renderVisualizerRepoSelector();
 }
 
-function renderRobotRepoSelector() {
-  if (!robotRepoSelect) return;
-
-  const saved = localStorage.getItem("forge_selected_robot_repo") || "";
-  robotRepoSelect.innerHTML = "";
-
-  if (!cachedRepos.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No repositories loaded";
-    robotRepoSelect.appendChild(option);
-    if (robotRepoMeta) {
-      robotRepoMeta.textContent = "Connect GitHub and refresh repos to select one.";
-    }
-    renderRobotWorkspace({ graph: { nodes: [], edges: [] }, summary: {}, mermaid: "" });
-    return;
+function renderSession() {
+  const user = currentSession.user;
+  if (elements.accountName) {
+    elements.accountName.textContent = user?.name || "Not signed in";
+  }
+  if (elements.accountEmail) {
+    elements.accountEmail.textContent = user?.email || "-";
+  }
+  if (elements.settingsFirstNameInput) {
+    elements.settingsFirstNameInput.value = user?.name || "";
+  }
+  if (elements.settingsGithubStatus) {
+    elements.settingsGithubStatus.textContent = currentSession.githubConnected
+      ? "GitHub connected."
+      : "GitHub not connected.";
+  }
+  if (elements.githubSummary) {
+    elements.githubSummary.textContent = currentSession.githubConnected
+      ? "Load a repo here, then use the same source inside My Robot."
+      : "Connect GitHub to load recent repositories.";
   }
 
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a repository";
-  robotRepoSelect.appendChild(placeholder);
-
-  cachedRepos.forEach((repo) => {
-    const option = document.createElement("option");
-    option.value = repo.full_name;
-    option.textContent = repo.full_name;
-    option.selected = saved === repo.full_name;
-    robotRepoSelect.appendChild(option);
-  });
-
-  updateRobotRepoMeta(robotRepoSelect.value || saved);
-  renderArtifactRepoSelector();
-  renderCodeRepoSelector();
-}
-
-function updateRobotRepoMeta(fullName) {
-  if (!robotRepoMeta) return;
-  if (!fullName) {
-    robotRepoMeta.textContent = "Select a repository to bind as this robot's codebase and graph workspace.";
-    return;
+  setHidden(elements.accountSummary, !user);
+  setHidden(elements.sidebarLogoutButton, !user);
+  if (elements.accountSignInButton) {
+    elements.accountSignInButton.textContent = user ? "Signed in" : "Sign in";
+    elements.accountSignInButton.disabled = Boolean(user);
   }
-
-  const repo = cachedRepos.find((r) => r.full_name === fullName);
-  if (!repo) {
-    robotRepoMeta.textContent = fullName;
-    return;
-  }
-
-  robotRepoMeta.textContent = `${repo.full_name} • ${repo.language || "Unknown"} • ${
-    repo.private ? "Private" : "Public"
-  } • persisted robot graph`;
-}
-
-function renderArtifactRepoSelector() {
-  if (!artifactRepoSelect) return;
-
-  const saved = localStorage.getItem("forge_selected_artifact_repo") || "";
-  artifactRepoSelect.innerHTML = "";
-
-  if (!cachedRepos.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No repositories loaded";
-    artifactRepoSelect.appendChild(option);
-    return;
-  }
-
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a repository";
-  artifactRepoSelect.appendChild(placeholder);
-
-  cachedRepos.forEach((repo) => {
-    const option = document.createElement("option");
-    option.value = repo.full_name;
-    option.textContent = repo.full_name;
-    option.selected = saved === repo.full_name;
-    artifactRepoSelect.appendChild(option);
-  });
-}
-
-function renderCodeRepoSelector() {
-  if (!codeRepoSelect) return;
-
-  const saved = localStorage.getItem("forge_selected_code_repo") || "";
-  codeRepoSelect.innerHTML = "";
-
-  if (!cachedRepos.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No repositories loaded";
-    codeRepoSelect.appendChild(option);
-    return;
-  }
-
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a repository";
-  codeRepoSelect.appendChild(placeholder);
-
-  cachedRepos.forEach((repo) => {
-    const option = document.createElement("option");
-    option.value = repo.full_name;
-    option.textContent = repo.full_name;
-    option.selected = saved === repo.full_name;
-    codeRepoSelect.appendChild(option);
-  });
-}
-
-function renderVisualizerRepoSelector() {
-  if (!visualizerRepoSelect) return;
-
-  const saved = localStorage.getItem("forge_selected_visualizer_repo") || "";
-  visualizerRepoSelect.innerHTML = "";
-
-  if (!cachedRepos.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No repositories loaded";
-    visualizerRepoSelect.appendChild(option);
-    if (visualizerStats) {
-      visualizerStats.textContent = "Connect GitHub and refresh repos to build a graph.";
-    }
-    return;
-  }
-
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a repository";
-  visualizerRepoSelect.appendChild(placeholder);
-
-  cachedRepos.forEach((repo) => {
-    const option = document.createElement("option");
-    option.value = repo.full_name;
-    option.textContent = repo.full_name;
-    option.selected = saved === repo.full_name;
-    visualizerRepoSelect.appendChild(option);
-  });
-}
-
-function wrapText(text, maxCharsPerLine = 34, maxLines = 4) {
-  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return "";
-  const lines = [];
-  let current = "";
-
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length <= maxCharsPerLine) {
-      current = next;
-      continue;
-    }
-    if (current) {
-      lines.push(current);
-      current = word;
-    } else {
-      lines.push(word.slice(0, maxCharsPerLine));
-      current = word.slice(maxCharsPerLine);
-    }
-    if (lines.length >= maxLines) break;
-  }
-
-  if (lines.length < maxLines && current) {
-    lines.push(current);
-  }
-  if (lines.length > maxLines) {
-    lines.length = maxLines;
-  }
-  if (words.length && lines.length === maxLines) {
-    const joined = lines.join(" ");
-    const original = words.join(" ");
-    if (joined.length < original.length) {
-      lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[.,;:!?]?$/, "")}...`;
-    }
-  }
-  return lines.join("\n");
 }
 
 function openSignInModal() {
-  signInModal.classList.remove("hidden");
-  signInModal.classList.remove("closing");
-  signInModal.classList.add("opening");
-  signInModal.setAttribute("aria-hidden", "false");
+  if (!elements.signInModal) return;
+  elements.signInModal.classList.remove("hidden");
+  elements.signInModal.setAttribute("aria-hidden", "false");
 }
 
 function closeSignInModal() {
-  signInModal.classList.remove("opening");
-  signInModal.classList.add("closing");
-  setTimeout(() => {
-    signInModal.classList.add("hidden");
-    signInModal.setAttribute("aria-hidden", "true");
-    signInModal.classList.remove("closing");
-  }, 220);
+  if (!elements.signInModal) return;
+  elements.signInModal.classList.add("hidden");
+  elements.signInModal.setAttribute("aria-hidden", "true");
 }
 
-function openTeamModal() {
-  if (!teamModal) return;
-  teamModal.classList.remove("hidden");
-  teamModal.classList.remove("closing");
-  teamModal.classList.add("opening");
-  teamModal.setAttribute("aria-hidden", "false");
-}
+const teamController = createTeamController({
+  elements,
+  setStatus
+});
 
-function closeTeamModal() {
-  if (!teamModal) return;
-  teamModal.classList.remove("opening");
-  teamModal.classList.add("closing");
-  setTimeout(() => {
-    teamModal.classList.add("hidden");
-    teamModal.setAttribute("aria-hidden", "true");
-    teamModal.classList.remove("closing");
-  }, 220);
-}
+const codeController = createCodeController({
+  elements,
+  setStatus
+});
 
-async function apiJson(path, options = {}) {
-  const res = await fetch(path, {
-    credentials: "include",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
-  });
+const artifactController = createArtifactController({
+  elements,
+  setStatus,
+  onSaved: () => teamController.refresh()
+});
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || `Request failed (${res.status})`);
-  }
-  return data;
-}
+const robotController = createRobotController({
+  elements,
+  setStatus,
+  getTeamMembers: () => teamController.getMembers(),
+  saveTaskToLog: ({ title, assigneeUserId }) => teamController.createTask({ title, assigneeUserId })
+});
 
-function inferLanguage(filePath) {
-  const lower = String(filePath || "").toLowerCase();
-  if (lower.endsWith(".ts")) return "typescript";
-  if (lower.endsWith(".tsx")) return "typescript";
-  if (lower.endsWith(".js")) return "javascript";
-  if (lower.endsWith(".jsx")) return "javascript";
-  if (lower.endsWith(".py")) return "python";
-  if (lower.endsWith(".json")) return "json";
-  if (lower.endsWith(".md")) return "markdown";
-  if (lower.endsWith(".css")) return "css";
-  if (lower.endsWith(".html")) return "html";
-  if (lower.endsWith(".yml") || lower.endsWith(".yaml")) return "yaml";
-  if (lower.endsWith(".sql")) return "sql";
-  return "plaintext";
-}
-
-async function ensureMonacoLoaded() {
-  if (monacoLoaded) return true;
-  if (!monacoMount) return false;
-
-  try {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src =
-        "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js";
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-
-    await new Promise((resolve) => {
-      window.require.config({
-        paths: {
-          vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs"
-        }
-      });
-      window.require(["vs/editor/editor.main"], resolve);
-    });
-
-    monacoEditor = window.monaco.editor.create(monacoMount, {
-      value: "// Load a repository, then click a file.",
-      language: "javascript",
-      theme: "vs-dark",
-      automaticLayout: true,
-      minimap: { enabled: true },
-      fontSize: 13
-    });
-    monacoLoaded = true;
-    return true;
-  } catch {
-    if (codeEditorMeta) {
-      codeEditorMeta.textContent =
-        "Could not load Monaco from CDN. Check internet connection and retry.";
-    }
-    return false;
-  }
-}
-
-async function ensureMermaidLoaded() {
-  if (mermaidLoaded) return true;
-  try {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-    window.mermaid.initialize({
-      startOnLoad: false,
-      theme: "dark",
-      securityLevel: "loose"
-    });
-    mermaidLoaded = true;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function ensureVisNetworkLoaded() {
-  if (visLoaded) return true;
-  try {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/vis-network/standalone/umd/vis-network.min.js";
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-    visLoaded = true;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function renderRepositoryGraph(graphData) {
-  if (!visualizerGraphMount) return;
-  const ok = await ensureVisNetworkLoaded();
-  if (!ok || !window.vis?.Network) {
-    if (visualizerStats) {
-      visualizerStats.textContent =
-        "Could not load graph renderer. Check internet connection and try again.";
-    }
-    return;
-  }
-
-  const localNodes = new Set(
-    (graphData.nodes || []).map((node) => node.id)
-  );
-  const edges = (graphData.edges || [])
-    .filter(
-      (edge) =>
-        (edge.type === "local" || edge.type === "contains") &&
-        localNodes.has(edge.from) &&
-        localNodes.has(edge.to)
-    )
-    .slice(0, 3000);
-
-  const nodes = (graphData.nodes || []).map((node) => {
-    const isRoot = node.id === "__repo_root__";
-    const summaryText = isRoot
-      ? `Project Root\n${graphData.stats?.totalFiles ?? 0} items`
-      : wrapText(node.summary || "No summary available.", 36, 5);
-    const nameText = isRoot ? "Project Root" : node.label;
-    return {
-      id: node.id,
-      label: `${summaryText}\n\n${nameText}`,
-      title: undefined,
-      group: isRoot ? "root" : node.group || "file"
-    };
-  });
-
-  const dataset = {
-    nodes: new window.vis.DataSet(nodes),
-    edges: new window.vis.DataSet(
-      edges.map((edge) => ({
-        from: edge.from,
-        to: edge.to,
-        arrows: "to",
-        color:
-          edge.type === "contains"
-            ? { color: "#31445f", highlight: "#5789c6" }
-            : { color: "#4b6489", highlight: "#6fb2ff" }
-      }))
-    )
-  };
-
-  if (visNetwork) {
-    visNetwork.destroy();
-  }
-
-  visNetwork = new window.vis.Network(visualizerGraphMount, dataset, {
-    autoResize: true,
-    layout: {
-      improvedLayout: true
-    },
-    physics: {
-      stabilization: { iterations: 280, fit: true },
-      barnesHut: {
-        gravitationalConstant: -7600,
-        centralGravity: 0.08,
-        springLength: 50,
-        springConstant: 0.015,
-        damping: 0.24,
-        avoidOverlap: 0.8
-      }
-    },
-    interaction: {
-      hover: false,
-      tooltipDelay: 120,
-      navigationButtons: true,
-      keyboard: true
-    },
-    nodes: {
-      shape: "box",
-      margin: { top: 18, right: 20, bottom: 18, left: 20 },
-      widthConstraint: { minimum: 220, maximum: 290 },
-      borderWidth: 1.5,
-      borderWidthSelected: 2,
-      shadow: {
-        enabled: true,
-        color: "rgba(0, 0, 0, 0.35)",
-        size: 12,
-        x: 0,
-        y: 6
-      },
-      font: {
-        color: "#f0f5ff",
-        size: 14,
-        face: "Avenir Next, Inter, Segoe UI, Helvetica Neue, sans-serif"
-      },
-      labelHighlightBold: false
-    },
-    edges: {
-      smooth: {
-        enabled: true
-      },
-      width: 2,
-      color: { color: "#4b5d78", highlight: "#68b4ff" }
-    },
-    groups: {
-      root: { color: { background: "#184b2f", border: "#34d184" } },
-      ts: { color: { background: "#1f2b44", border: "#5e8fd6" } },
-      js: { color: { background: "#2a2a3b", border: "#8493dd" } },
-      jsx: { color: { background: "#21313f", border: "#66bdd4" } },
-      tsx: { color: { background: "#1f3045", border: "#61a9e7" } },
-      json: { color: { background: "#352f24", border: "#cda45e" } },
-      md: { color: { background: "#2c2f34", border: "#9aa1ab" } },
-      file: { color: { background: "#1d2230", border: "#69748a" } }
-    }
-  });
-}
-
-function normalizeMermaidGraph(input) {
-  let text = String(input || "").trim();
-  if (!text) return text;
-
-  // Convert single-line mermaid syntax with semicolons into new lines.
-  if (text.includes(";") && !text.includes("\n")) {
-    text = text
-      .split(";")
-      .map((chunk) => chunk.trim())
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  // Normalize graph keyword if present.
-  if (text.startsWith("graph LR")) {
-    text = text.replace(/^graph\\s+LR/, "flowchart LR");
-  }
-  return text;
-}
-
-async function renderArtifactDiagram(mermaidSource) {
-  if (!artifactMermaidRender || !artifactMermaid) return;
-  const normalized = normalizeMermaidGraph(mermaidSource);
-  artifactMermaid.textContent = normalized;
-
-  const ok = await ensureMermaidLoaded();
-  if (!ok) {
-    artifactMermaidRender.innerHTML = "";
-    return;
-  }
-
-  try {
-    const renderId = `artifactGraph_${Date.now()}`;
-    const { svg } = await window.mermaid.render(renderId, normalized);
-    artifactMermaidRender.innerHTML = svg;
-  } catch (err) {
-    artifactMermaidRender.innerHTML =
-      '<p class="muted">Unable to render graph. Showing source below.</p>';
-  }
-}
-
-function renderCodeFiles(files) {
-  codeFileList.innerHTML = "";
-  if (!files.length) {
-    codeFileList.innerHTML = '<li class="empty-list">No files found.</li>';
-    return;
-  }
-  files.forEach((filePath) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<button type="button" class="code-file-btn" data-code-file="${filePath}">${filePath}</button>`;
-    codeFileList.appendChild(li);
-  });
-}
-
-async function loadCodeTreeByPath(repoPath) {
-  const data = await apiJson(`/api/code/tree?repoPath=${encodeURIComponent(repoPath)}`, {
-    method: "GET"
-  });
-  currentCodeRepoPath = data.repoPath;
-  renderCodeFiles(data.files || []);
-  if (codeEditorMeta) {
-    codeEditorMeta.textContent = `Loaded ${data.files.length} files from ${data.repoPath}`;
-  }
-  await ensureMonacoLoaded();
-}
-
-async function loadCodeFile(filePath) {
-  if (!currentCodeRepoPath || !filePath) return;
-
-  try {
-    const data = await apiJson(
-      `/api/code/file?repoPath=${encodeURIComponent(currentCodeRepoPath)}&filePath=${encodeURIComponent(
-        filePath
-      )}`,
-      { method: "GET" }
-    );
-
-    const ok = await ensureMonacoLoaded();
-    if (ok && monacoEditor) {
-      const model = window.monaco.editor.createModel(
-        data.content,
-        inferLanguage(filePath),
-        window.monaco.Uri.parse(`inmemory://forge/${filePath}`)
-      );
-      monacoEditor.setModel(model);
-    }
-
-    if (codeEditorMeta) {
-      codeEditorMeta.textContent = `${data.repoPath} • ${data.filePath}`;
-    }
-    setStatus(`Opened ${filePath}`);
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-}
-
-function getSelectedRobotRepo() {
-  return robotRepoSelect?.value || localStorage.getItem("forge_selected_robot_repo") || "";
-}
-
-function formatRobotTimestamp(value) {
-  if (!value) return "Unknown";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function renderRobotSummary(summary = {}) {
-  if (!robotSummaryGrid) return;
-
-  const stats = [
-    ["Nodes", summary.nodeCount ?? 0],
-    ["Edges", summary.edgeCount ?? 0],
-    ["Needs Verification", summary.verificationNeeded ?? 0],
-    ["Planner Runs", summary.plannerRuns ?? 0],
-    ["Verifier Runs", summary.verifierRuns ?? 0],
-    ["Discovery Runs", summary.discoveryRuns ?? 0]
-  ];
-
-  robotSummaryGrid.innerHTML = stats
-    .map(
-      ([labelText, value]) => `
-        <div class="robot-stat">
-          <p class="robot-stat-label">${labelText}</p>
-          <p class="robot-stat-value">${value}</p>
-        </div>
-      `
-    )
-    .join("");
-
-  if (robotGraphRevision) {
-    robotGraphRevision.textContent = `Revision: ${summary.revision ?? 0} • Updated ${formatRobotTimestamp(
-      summary.updatedAt
-    )}`;
-  }
-}
-
-function renderRobotEdges(edges = []) {
-  if (!robotEdgeList) return;
-  if (!edges.length) {
-    robotEdgeList.innerHTML = '<li class="empty-list">No connections recorded yet.</li>';
-    return;
-  }
-
-  robotEdgeList.innerHTML = "";
-  edges.forEach((edge) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<strong>${escapeHtml(edge.source)} → ${escapeHtml(edge.target)}</strong><span>${escapeHtml(edge.label)} • ${escapeHtml(edge.status)}</span>`;
-    robotEdgeList.appendChild(li);
-  });
-}
-
-function renderRobotNodes(nodes = []) {
-  if (!robotNodeGrid) return;
-  if (!nodes.length) {
-    robotNodeGrid.innerHTML = '<div class="empty-repo">No component nodes yet.</div>';
-    return;
-  }
-
-  robotNodeGrid.innerHTML = nodes
-    .map((node) => {
-      const ports = (node.ports || []).map((port) => port.name).filter(Boolean);
-      const interfaces = node.interfaces || [];
-      const pills = [...interfaces, ...ports].slice(0, 8);
-      return `
-        <article class="robot-node-card">
-          <h4>${escapeHtml(node.label)}</h4>
-          <p class="robot-node-meta">${escapeHtml(node.category)} • ${escapeHtml(node.status)}</p>
-          <p>${escapeHtml(node.description || "No description yet.")}</p>
-          <div class="robot-pill-row">
-            ${pills.length ? pills.map((pill) => `<span class="robot-pill">${escapeHtml(pill)}</span>`).join("") : '<span class="robot-pill">No interfaces yet</span>'}
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function renderRobotDiscovery(run) {
-  if (!robotDiscoveryList) return;
-  const results = run?.results || [];
-  if (!results.length) {
-    robotDiscoveryList.innerHTML = '<div class="empty-repo">No discovery results yet.</div>';
-    return;
-  }
-
-  robotDiscoveryList.innerHTML = results
-    .map(
-      (result) => `
-        <article class="robot-discovery-card">
-          <h4>${escapeHtml(result.title || "Untitled result")}</h4>
-          <p class="robot-discovery-meta">Rank ${escapeHtml(result.rank)} • ${escapeHtml(result.sourceType || "web")}</p>
-          <p>${escapeHtml(result.excerpt || "No excerpt available.")}</p>
-          <a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open source</a>
-        </article>
-      `
-    )
-    .join("");
-}
-
-function renderRobotWorkspace(data) {
-  currentRobotGraph = data?.graph || null;
-  renderRobotSummary(data?.summary || {});
-  renderRobotEdges(data?.graph?.edges || []);
-  renderRobotNodes(data?.graph?.nodes || []);
-  if (robotGraphOutput) {
-    robotGraphOutput.textContent = JSON.stringify(
-      {
-        mermaid: data?.mermaid || "",
-        graph: data?.graph || {}
-      },
-      null,
-      2
-    );
-  }
-}
-
-async function loadRobotWorkspace(repoFullName = getSelectedRobotRepo()) {
-  if (!repoFullName) {
-    if (robotRepoMeta) {
-      robotRepoMeta.textContent = "Select a repository to load its robot graph.";
-    }
-    renderRobotWorkspace({
-      graph: { nodes: [], edges: [] },
-      summary: {},
-      mermaid: ""
-    });
-    return;
-  }
-
-  const data = await apiJson(`/api/robot/graph?repoFullName=${encodeURIComponent(repoFullName)}`, {
-    method: "GET"
-  });
-  renderRobotWorkspace(data);
-}
-
-function renderTeamState(state) {
-  currentTeamState = state;
-  teamStorageBadge.textContent = `Storage: ${state.storage}`;
-
-  teamSelect.innerHTML = "";
-  if (!state.teams.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No teams yet";
-    teamSelect.appendChild(option);
-  } else {
-    state.teams.forEach((team) => {
-      const option = document.createElement("option");
-      option.value = team.id;
-      option.textContent = `${team.name} (${team.role})`;
-      option.selected = team.id === state.activeTeamId;
-      teamSelect.appendChild(option);
-    });
-  }
-
-  const activeTeam = state.teams.find((team) => team.id === state.activeTeamId);
-  activeTeamMeta.textContent = activeTeam
-    ? `Active: ${activeTeam.name} • Invite code: ${activeTeam.invite_code}`
-    : "No active team";
-
-  if (teamPillList) {
-    teamPillList.innerHTML = "";
-    state.teams.forEach((team) => {
-      const li = document.createElement("li");
-      li.className = `team-pill ${team.id === state.activeTeamId ? "active" : ""}`;
-      li.innerHTML = `
-        <span>${team.name}</span>
-        ${team.role === "owner" ? `<button type="button" data-delete-team="${team.id}" class="team-pill-delete">×</button>` : ""}
-      `;
-      teamPillList.appendChild(li);
-    });
-  }
-
-  if (taskAssigneeInput) {
-    const previous = taskAssigneeInput.value;
-    taskAssigneeInput.innerHTML = '<option value="">Unassigned</option>';
-    state.members.forEach((member) => {
-      const option = document.createElement("option");
-      option.value = member.user_id;
-      option.textContent = member.user?.name || member.user?.email || member.user_id;
-      option.selected = previous === member.user_id;
-      taskAssigneeInput.appendChild(option);
-    });
-  }
-
-  membersList.innerHTML = "";
-  if (!state.members.length) {
-    membersList.innerHTML = '<li class="empty-list">No members yet.</li>';
-  } else {
-    state.members.forEach((member) => {
-      const li = document.createElement("li");
-      const name = member.user?.name || member.user?.email || member.user_id;
-      li.innerHTML = `<strong>${name}</strong><span>${member.role}</span>`;
-      membersList.appendChild(li);
-    });
-  }
-
-  taskList.innerHTML = "";
-  if (!state.tasks.length) {
-    taskList.innerHTML = '<li class="empty-list">No tasks yet.</li>';
-  } else {
-    state.tasks.forEach((task) => {
-      const li = document.createElement("li");
-      const assignee = task.assignee_user_id ? ` • assignee: ${task.assignee_user_id}` : "";
-      li.innerHTML = `<strong>${task.title}</strong><span>${task.status}${assignee}</span>`;
-      taskList.appendChild(li);
-    });
-  }
-
-  artifactList.innerHTML = "";
-  const artifacts = state.artifacts || [];
-  if (!artifacts.length) {
-    artifactList.innerHTML = '<li class="empty-list">No runs/fixes yet.</li>';
-  } else {
-    artifacts.forEach((artifact) => {
-      const li = document.createElement("li");
-      li.innerHTML = `<strong>[${artifact.type}] ${artifact.title}</strong><span>${artifact.summary || "No summary"}</span>`;
-      artifactList.appendChild(li);
-    });
-  }
-}
-
-async function refreshTeamState() {
-  if (!currentSession.user) {
-    renderTeamState({
-      storage: "unknown",
-      teams: [],
-      activeTeamId: null,
-      members: [],
-      tasks: [],
-      artifacts: []
-    });
-    return;
-  }
-
-  try {
-    const state = await apiJson("/api/team/state");
-    renderTeamState(state);
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-}
-
-async function refreshSession() {
-  const data = await apiJson("/api/auth/session", { method: "GET" });
-  currentSession = data;
-
-  if (!data.user) {
-    if (accountSignInButton) {
-      accountSignInButton.classList.remove("hidden");
-      accountSignInButton.textContent = "Sign in";
-    }
-    if (accountSummary) {
-      accountSummary.classList.add("hidden");
-    }
-    if (accountName) {
-      accountName.textContent = "Not signed in";
-    }
-    if (accountEmail) {
-      accountEmail.textContent = "-";
-    }
-    if (sidebarLogoutButton) {
-      sidebarLogoutButton.classList.add("hidden");
-    }
-    githubSummary.textContent = "Connect GitHub to load recent projects.";
-    if (settingsGithubStatus) {
-      settingsGithubStatus.textContent = "Sign in to manage integrations.";
-    }
-    renderRepos([]);
-    await refreshTeamState();
-    return data;
-  }
-
-  if (accountSignInButton) {
-    accountSignInButton.classList.add("hidden");
-  }
-  if (accountSummary) {
-    accountSummary.classList.remove("hidden");
-  }
-  if (accountName) {
-    accountName.textContent = data.user.name || "Account";
-  }
-  if (accountEmail) {
-    accountEmail.textContent = data.user.email || "";
-  }
-  if (sidebarLogoutButton) {
-    sidebarLogoutButton.classList.remove("hidden");
-  }
-  githubSummary.textContent = data.githubConnected
-    ? "Connected and syncing your recent projects."
-    : "Connected account. Link GitHub to load recent projects.";
-  if (settingsFirstNameInput) {
-    settingsFirstNameInput.value = data.user.name || "";
-  }
-  if (settingsGithubStatus) {
-    settingsGithubStatus.textContent = data.githubConnected
-      ? "GitHub is connected to your account."
-      : "GitHub is not connected. Use Connect GitHub in Team Workspace.";
-  }
-
-  if (data.githubConnected) {
-    refreshRepos();
-  } else {
-    renderRepos([]);
-  }
-
-  await refreshTeamState();
-  return data;
+function pushRepos(repos) {
+  cachedRepos = Array.isArray(repos) ? repos : [];
+  renderRepoGrid(cachedRepos);
+  codeController.setRepos(cachedRepos);
+  artifactController.setRepos(cachedRepos);
+  robotController.setRepos(cachedRepos);
 }
 
 async function refreshRepos() {
+  if (!currentSession.user) return;
+  if (!currentSession.githubConnected) {
+    pushRepos([]);
+    return;
+  }
+  setStatus("Refreshing repositories...");
+  const data = await apiJson("/api/github/repos");
+  pushRepos(data.repos || []);
+  setStatus("Repositories loaded");
+}
+
+async function hydrateSession() {
   try {
-    setStatus("Loading repositories...");
-    const data = await apiJson("/api/github/repos", { method: "GET" });
-    renderRepos(data.repos || []);
-    const selectedRobotRepo = getSelectedRobotRepo();
-    if (selectedRobotRepo) {
-      await loadRobotWorkspace(selectedRobotRepo);
+    const appMeta = await window.forgeAPI.getAppMeta().catch(() => null);
+    if (elements.meta && appMeta) {
+      elements.meta.textContent = `${appMeta.name} ${appMeta.version} • ${appMeta.platform}`;
     }
-    setStatus(`Loaded ${data.repos.length} repositories`);
-  } catch (err) {
-    renderRepos([]);
-    setStatus(err.message, true);
+    const session = await apiJson("/api/auth/session");
+    currentSession = session;
+    renderSession();
+    if (currentSession.user) {
+      await Promise.allSettled([
+        teamController.refresh(),
+        currentSession.githubConnected ? refreshRepos() : Promise.resolve()
+      ]);
+      await Promise.allSettled([codeController.loadStoredSource(), robotController.loadWorkspace()]);
+    } else {
+      pushRepos([]);
+      await robotController.loadWorkspace().catch(() => {});
+    }
+  } catch (error) {
+    setStatus(error.message, true);
   }
 }
 
-navButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    setActiveView(btn.dataset.view);
-  });
-});
-
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-
-  try {
-    setStatus("Logging in...");
-    await apiJson("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password })
-    });
-    await refreshSession();
-    closeSignInModal();
-    setStatus("Logged in");
-  } catch (err) {
-    setStatus(err.message, true);
+if (elements.navButtons.length) {
+  for (const button of elements.navButtons) {
+    button.addEventListener("click", () => setActiveView(button.dataset.view || "workspace"));
   }
-});
+}
 
-if (accountSignInButton) {
-  accountSignInButton.addEventListener("click", async () => {
-    const session = await refreshSession();
-    if (!session.user) {
+if (elements.accountSignInButton) {
+  elements.accountSignInButton.addEventListener("click", () => {
+    if (!currentSession.user) {
+      openSignInModal();
+    }
+  });
+}
+
+if (elements.sidebarLogoutButton) {
+  elements.sidebarLogoutButton.addEventListener("click", async () => {
+    try {
+      await apiJson("/api/auth/logout", { method: "POST" });
+      currentSession = { user: null, githubConnected: false };
+      renderSession();
+      pushRepos([]);
+      await teamController.refresh();
+      codeController.reset();
+      await robotController.loadWorkspace().catch(() => {});
+      setStatus("Logged out");
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  });
+}
+
+if (elements.settingsLogoutButton) {
+  elements.settingsLogoutButton.addEventListener("click", () => {
+    elements.sidebarLogoutButton?.click();
+  });
+}
+
+if (elements.signInModal) {
+  elements.signInModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.dataset.closeModal === "true") {
+      closeSignInModal();
+    }
+  });
+}
+
+if (elements.loginForm) {
+  elements.loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = String(byId("email")?.value || "").trim();
+    const password = String(byId("password")?.value || "");
+    try {
+      setStatus("Signing in...");
+      currentSession = await apiJson("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+      closeSignInModal();
+      renderSession();
+      await Promise.allSettled([teamController.refresh(), currentSession.githubConnected ? refreshRepos() : Promise.resolve()]);
+      await Promise.allSettled([codeController.loadStoredSource(), robotController.loadWorkspace()]);
+      setStatus("Signed in");
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  });
+}
+
+if (elements.githubConnectButton) {
+  elements.githubConnectButton.addEventListener("click", () => {
+    if (!currentSession.user) {
       openSignInModal();
       return;
     }
-    setStatus(`Signed in as ${session.user.name || session.user.email}`);
+    window.location.assign("/api/auth/github/connect");
   });
 }
 
-githubConnectButton.addEventListener("click", () => {
-  window.location.href = "/api/auth/github/connect";
-});
+if (elements.reposRefreshButton) {
+  elements.reposRefreshButton.addEventListener("click", () => {
+    refreshRepos().catch((error) => setStatus(error.message, true));
+  });
+}
 
-reposRefreshButton.addEventListener("click", refreshRepos);
-if (repoShowMoreButton) {
-  repoShowMoreButton.addEventListener("click", () => {
+if (elements.repoShowMoreButton) {
+  elements.repoShowMoreButton.addEventListener("click", () => {
     showAllRepos = !showAllRepos;
-    renderRepos(cachedRepos);
+    renderRepoGrid(cachedRepos);
   });
 }
 
-if (robotRepoSelect) {
-  robotRepoSelect.addEventListener("change", async () => {
-    const selected = robotRepoSelect.value;
-    localStorage.setItem("forge_selected_robot_repo", selected);
-    updateRobotRepoMeta(selected);
-    if (!selected) return;
-    try {
-      setStatus("Loading robot graph...");
-      await loadRobotWorkspace(selected);
-      setStatus("Robot graph loaded");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (robotRefreshButton) {
-  robotRefreshButton.addEventListener("click", async () => {
-    const repoFullName = getSelectedRobotRepo();
-    if (!repoFullName) {
-      setStatus("Select a repository first.", true);
-      return;
-    }
-
-    try {
-      setStatus("Refreshing robot graph...");
-      await loadRobotWorkspace(repoFullName);
-      setStatus("Robot graph refreshed");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (artifactRepoSelect) {
-  artifactRepoSelect.addEventListener("change", () => {
-    localStorage.setItem("forge_selected_artifact_repo", artifactRepoSelect.value);
-  });
-}
-
-if (codeRepoSelect) {
-  codeRepoSelect.addEventListener("change", () => {
-    localStorage.setItem("forge_selected_code_repo", codeRepoSelect.value);
-  });
-}
-
-if (visualizerRepoSelect) {
-  visualizerRepoSelect.addEventListener("change", () => {
-    localStorage.setItem("forge_selected_visualizer_repo", visualizerRepoSelect.value);
-  });
-}
-
-if (artifactGenerateForm) {
-  artifactGenerateForm.addEventListener("submit", async (event) => {
+if (elements.settingsProfileForm) {
+  elements.settingsProfileForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const repoFullName = artifactRepoSelect?.value || "";
-    if (!repoFullName) {
-      setStatus("Select a repository for artifact generation.", true);
-      return;
-    }
-
-    try {
-      setStatus("Generating integration diagram...");
-      const data = await apiJson("/api/artifacts/generate", {
-        method: "POST",
-        body: JSON.stringify({ repoFullName })
-      });
-      generatedArtifact = data.artifact || null;
-
-      if (artifactTitle) artifactTitle.textContent = generatedArtifact?.title || "Generated artifact";
-      if (artifactDescription) {
-        artifactDescription.textContent =
-          generatedArtifact?.description || "Integration diagram generated.";
-      }
-      if (artifactMermaid) {
-        await renderArtifactDiagram(generatedArtifact?.mermaid || "");
-      }
-      if (artifactStatus) {
-        artifactStatus.textContent = `Generated at ${new Date(
-          generatedArtifact.generatedAt
-        ).toLocaleTimeString()}`;
-      }
-      setStatus("Artifact generated");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (artifactSaveButton) {
-  artifactSaveButton.addEventListener("click", async () => {
-    if (!generatedArtifact) {
-      setStatus("Generate an artifact first.", true);
-      return;
-    }
-
-    try {
-      setStatus("Saving artifact to team workspace...");
-      await apiJson("/api/team/artifacts", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "plan",
-          title: generatedArtifact.title,
-          summary: generatedArtifact.description,
-          payload: generatedArtifact
-        })
-      });
-      await refreshTeamState();
-      if (artifactStatus) {
-        artifactStatus.textContent = "Saved to Team Artifacts.";
-      }
-      setStatus("Artifact saved");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (codeLoadForm) {
-  codeLoadForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const repoFullName = codeRepoSelect?.value || "";
-    if (!repoFullName) {
-      setStatus("Select a repository first.", true);
-      return;
-    }
-
-    try {
-      setStatus("Loading repository file tree...");
-      const data = await apiJson(
-        `/api/code/tree/by-repo?repoFullName=${encodeURIComponent(repoFullName)}`,
-        { method: "GET" }
-      );
-      await loadCodeTreeByPath(data.repoPath);
-      setStatus("Repository loaded");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (codeOpenFolderButton) {
-  codeOpenFolderButton.addEventListener("click", async () => {
-    if (!window.forgeAPI?.openFolder) {
-      setStatus("Open Folder is only available in desktop mode.", true);
-      return;
-    }
-
-    try {
-      const result = await window.forgeAPI.openFolder();
-      if (!result || result.canceled || !result.path) {
-        return;
-      }
-
-      setStatus("Loading selected folder...");
-      await loadCodeTreeByPath(result.path);
-      if (codeEditorMeta) {
-        codeEditorMeta.textContent = `Opened folder: ${result.path}`;
-      }
-      setStatus("Folder loaded");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (visualizerLoadForm) {
-  visualizerLoadForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const repoFullName = visualizerRepoSelect?.value || "";
-    if (!repoFullName) {
-      setStatus("Select a repository for visualization.", true);
-      return;
-    }
-
-    try {
-      setStatus("Building repository graph...");
-      const data = await apiJson(
-        `/api/visualizer/graph/by-repo?repoFullName=${encodeURIComponent(
-          repoFullName
-        )}&includeSummaries=1`,
-        { method: "GET" }
-      );
-      await renderRepositoryGraph(data);
-      if (visualizerStats) {
-        visualizerStats.textContent = `${repoFullName} • ${data.stats?.totalFiles ?? 0} files • ${
-          data.stats?.totalEdges ?? 0
-        } edges • summaries: ${data.stats?.summaryModel || "unavailable"}`;
-      }
-      setStatus("Repository graph loaded");
-    } catch (err) {
-      setStatus(err.message, true);
-      if (visualizerStats) {
-        visualizerStats.textContent = "Unable to build graph for selected repository.";
-      }
-    }
-  });
-}
-
-if (visualizerOpenFolderButton) {
-  visualizerOpenFolderButton.addEventListener("click", async () => {
-    if (!window.forgeAPI?.openFolder) {
-      setStatus("Open Folder is only available in desktop mode.", true);
-      return;
-    }
-
-    try {
-      const result = await window.forgeAPI.openFolder();
-      if (!result || result.canceled || !result.path) {
-        return;
-      }
-
-      setStatus("Building graph from selected folder...");
-      const data = await apiJson(
-        `/api/visualizer/graph?repoPath=${encodeURIComponent(result.path)}&includeSummaries=1`,
-        { method: "GET" }
-      );
-      currentVisualizerRepoPath = data.repoPath || result.path;
-      await renderRepositoryGraph(data);
-      if (visualizerStats) {
-        visualizerStats.textContent = `${currentVisualizerRepoPath} • ${
-          data.stats?.totalFiles ?? 0
-        } files • ${data.stats?.totalEdges ?? 0} edges • summaries: ${
-          data.stats?.summaryModel || "unavailable"
-        }`;
-      }
-      setStatus("Repository graph loaded");
-    } catch (err) {
-      setStatus(err.message, true);
-      if (visualizerStats) {
-        visualizerStats.textContent = "Unable to build graph for selected folder.";
-      }
-    }
-  });
-}
-
-if (settingsProfileForm) {
-  settingsProfileForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const firstName = settingsFirstNameInput.value.trim();
-    if (!firstName) return;
-
+    const first_name = String(elements.settingsFirstNameInput?.value || "").trim();
+    if (!first_name) return;
     try {
       setStatus("Saving profile...");
-      await apiJson("/api/account/profile", {
+      const data = await apiJson("/api/account/profile", {
         method: "POST",
-        body: JSON.stringify({ first_name: firstName })
+        body: JSON.stringify({ first_name })
       });
-      await refreshSession();
+      currentSession.user = data.user;
+      renderSession();
       setStatus("Profile updated");
-    } catch (err) {
-      setStatus(err.message, true);
+    } catch (error) {
+      setStatus(error.message, true);
     }
   });
 }
 
-if (settingsPasswordForm) {
-  settingsPasswordForm.addEventListener("submit", async (event) => {
+if (elements.settingsPasswordForm) {
+  elements.settingsPasswordForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const password = settingsPasswordInput.value;
-    if (!password) return;
-
+    const password = String(elements.settingsPasswordInput?.value || "");
     try {
       setStatus("Updating password...");
       await apiJson("/api/account/password", {
         method: "POST",
         body: JSON.stringify({ password })
       });
-      settingsPasswordForm.reset();
+      elements.settingsPasswordForm.reset();
       setStatus("Password updated");
-    } catch (err) {
-      setStatus(err.message, true);
+    } catch (error) {
+      setStatus(error.message, true);
     }
   });
 }
 
-if (settingsGithubDisconnectButton) {
-  settingsGithubDisconnectButton.addEventListener("click", async () => {
+if (elements.settingsGithubDisconnectButton) {
+  elements.settingsGithubDisconnectButton.addEventListener("click", async () => {
     try {
       setStatus("Disconnecting GitHub...");
       await apiJson("/api/account/github/disconnect", { method: "POST" });
-      await refreshSession();
+      currentSession.githubConnected = false;
+      renderSession();
+      pushRepos([]);
       setStatus("GitHub disconnected");
-    } catch (err) {
-      setStatus(err.message, true);
+    } catch (error) {
+      setStatus(error.message, true);
     }
   });
 }
 
-if (settingsDeleteAccountButton) {
-  settingsDeleteAccountButton.addEventListener("click", async () => {
-    const confirmed = window.confirm("Delete your account permanently?");
-    if (!confirmed) return;
-
+if (elements.settingsDeleteAccountButton) {
+  elements.settingsDeleteAccountButton.addEventListener("click", async () => {
+    if (!window.confirm("Delete this account permanently?")) return;
     try {
       setStatus("Deleting account...");
       await apiJson("/api/account/delete", { method: "POST" });
-      renderRepos([]);
-      await refreshSession();
+      currentSession = { user: null, githubConnected: false };
+      renderSession();
+      pushRepos([]);
+      await teamController.refresh();
+      codeController.reset();
+      await robotController.loadWorkspace().catch(() => {});
       setStatus("Account deleted");
-    } catch (err) {
-      setStatus(err.message, true);
+    } catch (error) {
+      setStatus(error.message, true);
     }
   });
 }
 
-if (settingsLogoutButton) {
-  settingsLogoutButton.addEventListener("click", async () => {
-    try {
-      await apiJson("/api/auth/logout", { method: "POST" });
-      renderRepos([]);
-      await refreshSession();
-      setStatus("Logged out");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (sidebarLogoutButton) {
-  sidebarLogoutButton.addEventListener("click", async () => {
-    try {
-      await apiJson("/api/auth/logout", { method: "POST" });
-      renderRepos([]);
-      await refreshSession();
-      setStatus("Logged out");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (teamOpenModalButton) {
-  teamOpenModalButton.addEventListener("click", () => {
-    openTeamModal();
-  });
-}
-
-teamCreateForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const name = document.getElementById("team-name").value.trim();
-  if (!name) return;
-
-  try {
-    setStatus("Creating team...");
-    await apiJson("/api/team/create", {
-      method: "POST",
-      body: JSON.stringify({ name })
-    });
-    await refreshTeamState();
-    teamCreateForm.reset();
-    closeTeamModal();
-    setStatus("Team created");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
-
-teamJoinForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const inviteCode = document.getElementById("team-invite-code").value.trim();
-  if (!inviteCode) return;
-
-  try {
-    setStatus("Joining team...");
-    await apiJson("/api/team/join", {
-      method: "POST",
-      body: JSON.stringify({ inviteCode })
-    });
-    await refreshTeamState();
-    teamJoinForm.reset();
-    closeTeamModal();
-    setStatus("Joined team");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
-
-teamSwitchForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const teamId = teamSelect.value;
-  if (!teamId) return;
-
-  try {
-    setStatus("Switching team...");
-    await apiJson("/api/team/switch", {
-      method: "POST",
-      body: JSON.stringify({ teamId })
-    });
-    await refreshTeamState();
-    setStatus("Team switched");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
-
-taskForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const titleText = taskTitleInput.value.trim();
-  const assigneeUserId = taskAssigneeInput.value.trim();
-  if (!titleText) return;
-
-  try {
-    setStatus("Saving task...");
-    await apiJson("/api/team/tasks", {
-      method: "POST",
-      body: JSON.stringify({ title: titleText, assigneeUserId })
-    });
-    taskForm.reset();
-    await refreshTeamState();
-    setStatus("Task added");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
-
-if (robotPlanForm) {
-  robotPlanForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const repoFullName = getSelectedRobotRepo();
-    const objective = robotObjectiveInput?.value.trim() || "";
-    if (!repoFullName || !objective) {
-      setStatus("Select a repository and enter a planner objective.", true);
-      return;
-    }
-
-    try {
-      setStatus("Running planner agent...");
-      const data = await apiJson("/api/robot/plan", {
-        method: "POST",
-        body: JSON.stringify({ repoFullName, objective })
-      });
-      renderRobotWorkspace(data);
-      if (robotPlanOutput) {
-        robotPlanOutput.textContent = JSON.stringify(data.plan || {}, null, 2);
-      }
-      setStatus("Planner run complete");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (robotVerifyForm) {
-  robotVerifyForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const repoFullName = getSelectedRobotRepo();
-    const observations = robotObservationsInput?.value.trim() || "";
-    if (!repoFullName || !observations) {
-      setStatus("Select a repository and enter verifier observations.", true);
-      return;
-    }
-
-    try {
-      setStatus("Running verifier agent...");
-      const data = await apiJson("/api/robot/verify", {
-        method: "POST",
-        body: JSON.stringify({ repoFullName, observations })
-      });
-      renderRobotWorkspace(data);
-      if (robotVerifyOutput) {
-        robotVerifyOutput.textContent = JSON.stringify(data.run || {}, null, 2);
-      }
-      setStatus("Verifier run complete");
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-if (robotDiscoveryForm) {
-  robotDiscoveryForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const repoFullName = getSelectedRobotRepo();
-    const query = robotDiscoveryQueryInput?.value.trim() || "";
-    if (!repoFullName || !query) {
-      setStatus("Select a repository and enter a discovery query.", true);
-      return;
-    }
-
-    try {
-      setStatus("Searching for parts and datasheets...");
-      const data = await apiJson("/api/robot/discover", {
-        method: "POST",
-        body: JSON.stringify({ repoFullName, query })
-      });
-      renderRobotWorkspace(data);
-      renderRobotDiscovery(data.run);
-      setStatus(`Discovery complete: ${data.run?.resultCount || 0} results`);
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-window.forgeAPI
-  .getAppMeta()
-  .then((appMeta) => {
-    meta.textContent = `${appMeta.name} v${appMeta.version} • ${appMeta.platform}`;
-  })
-  .catch(() => {
-    meta.textContent = "Unable to load app metadata";
-  });
-
-setActiveView("workspace");
-renderRobotDiscovery(null);
-renderRobotWorkspace({ graph: { nodes: [], edges: [] }, summary: {}, mermaid: "" });
-
-refreshSession().catch(() => {
-  setStatus("Unable to load session", true);
-});
-
-document.addEventListener("click", (event) => {
-  const target = event.target;
-  if (target instanceof HTMLElement && target.dataset.closeModal === "true") {
-    closeSignInModal();
-  }
-  if (target instanceof HTMLElement && target.dataset.closeTeamModal === "true") {
-    closeTeamModal();
-  }
-
-  if (target instanceof HTMLElement && target.dataset.deleteTeam) {
-    const teamId = target.dataset.deleteTeam;
-    const confirmed = window.confirm("Delete this team?");
-    if (!confirmed) return;
-
-    apiJson(`/api/team/${teamId}`, { method: "DELETE" })
-      .then(async () => {
-        await refreshTeamState();
-        setStatus("Team deleted");
-      })
-      .catch((err) => {
-        setStatus(err.message, true);
-      });
-  }
-
-  if (target instanceof HTMLElement && target.dataset.codeFile) {
-    loadCodeFile(target.dataset.codeFile);
-  }
-});
+hydrateSession();

@@ -7,18 +7,17 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="window-bar">
+    <div class="window-bar flex items-center border-b border-slate-700/70 bg-slate-950/95 backdrop-blur">
       <span class="window-title">Forge RDE</span>
     </div>
-    <div class="app-shell">
-      <aside class="sidebar">
+    <div class="app-shell bg-slate-950 text-slate-100">
+      <aside class="sidebar border-r border-slate-800 bg-slate-950/95">
         <div>
-          <h1>🛠️ Forge RDE</h1>
-          <p class="tagline">Robotics Development Environment</p>
+          <h1 class="text-3xl font-semibold tracking-tight">🛠️ Forge RDE</h1>
+          <p class="tagline text-slate-400">Robotics Development Environment</p>
           <nav class="nav">
             <button class="nav-item active" data-view="workspace">Team Workspace</button>
             <button class="nav-item" data-view="code">Code Workspace</button>
-            <button class="nav-item" data-view="visualizer">Repository Visualizer</button>
             <button class="nav-item" data-view="robot">My Robot</button>
             <button class="nav-item" data-view="bench">Live Bench</button>
             <button class="nav-item" data-view="artifacts">Artifacts</button>
@@ -146,99 +145,98 @@
           </article>
         </section>
 
-        <section class="view" id="visualizer">
-          <article class="card full">
-            <h3>Repository Visualizer</h3>
-            <p class="muted">RDE-style file dependency graph generated from your selected repository.</p>
-            <form id="visualizer-load-form" class="stack-form">
-              <label for="visualizer-repo-select" class="muted">Source repository</label>
-              <select id="visualizer-repo-select">
-                <option value="">No repositories loaded</option>
-              </select>
-              <div class="actions">
-                <button type="submit">Load Visualizer Graph</button>
-                <button id="visualizer-open-folder" type="button" class="secondary-action">Open Folder…</button>
-              </div>
-            </form>
-            <p id="visualizer-stats" class="muted">Select a repository to build its graph.</p>
-            <div id="visualizer-graph" class="visualizer-graph"></div>
-          </article>
-        </section>
-
         <section class="view" id="robot">
-          <div class="robot-layout">
-            <article class="card full robot-hero">
-              <div class="robot-hero-copy">
+          <div class="robot-workspace">
+            <aside class="robot-rail robot-left-rail">
+              <article class="card full robot-panel">
                 <p class="settings-eyebrow">MY ROBOT</p>
-                <h3>Robot Graph + Agent Loop</h3>
+                <h3>Graph Workspace</h3>
                 <p class="muted">
-                  Build a self-extending graph for your robot, search parts and datasheets, generate a concrete build plan, and patch the graph when verification finds wiring or port mismatches.
+                  Use either a repo or any local folder as the active robot source. Sync the graph, plan the mission, discover missing parts, and assign resulting work.
                 </p>
-              </div>
-              <div class="stack-form robot-repo-stack">
-                <label for="robot-repo-select" class="muted">GitHub Repo (from your account)</label>
-                <select id="robot-repo-select">
-                  <option value="">No repositories loaded</option>
-                </select>
-                <p id="robot-repo-meta" class="muted">Select a repository to bind as this robot's codebase.</p>
-                <button id="robot-refresh-button" type="button">Load Robot Graph</button>
-              </div>
-            </article>
+                <div class="stack-form robot-repo-stack">
+                  <label for="robot-repo-select" class="muted">GitHub Repo (optional)</label>
+                  <select id="robot-repo-select">
+                    <option value="">No repositories loaded</option>
+                  </select>
+                  <div class="actions">
+                    <button id="robot-open-folder-button" type="button" class="secondary-action">Open Folder…</button>
+                    <button id="robot-refresh-button" type="button">Sync Workspace</button>
+                  </div>
+                  <p id="robot-repo-meta" class="muted">Select a repo or open any local folder to bind the robot workspace source.</p>
+                  <p id="robot-source-badge" class="storage-badge">Source: none</p>
+                </div>
+              </article>
 
-            <article class="card">
+              <article class="card full robot-panel">
+                <div class="repo-header">
+                  <div>
+                    <h3>Mission Board</h3>
+                    <p class="muted">Planner output renders as execution phases, blockers, part needs, and team tasks.</p>
+                  </div>
+                  <p id="robot-graph-revision" class="storage-badge">Revision: 0</p>
+                </div>
+                <div id="robot-summary-grid" class="robot-summary-grid"></div>
+                <form id="robot-plan-form" class="stack-form">
+                  <textarea id="robot-objective" rows="4" placeholder="Build a pick-and-drive mission that mounts the arm, verifies the serial path, and prepares the robot for a live bench demo." required></textarea>
+                  <button type="submit">Plan Mission</button>
+                </form>
+                <div id="robot-mission-board" class="robot-board-list"></div>
+              </article>
+
+              <article class="card full robot-panel">
+                <h3>Requirement Queue</h3>
+                <p class="muted">Create requirements directly or let the planner add them when the mission needs new parts.</p>
+                <form id="robot-requirement-form" class="stack-form">
+                  <input id="robot-requirement-title" type="text" placeholder="Low-latency arm camera with USB-C output" />
+                  <textarea id="robot-requirement-description" rows="3" placeholder="Describe the capability, part, or constraint you need."></textarea>
+                  <button type="submit">Add Requirement</button>
+                </form>
+                <div id="robot-requirement-list" class="robot-requirement-list"></div>
+              </article>
+
+              <article class="card full robot-panel">
+                <h3>Verifier</h3>
+                <p class="muted">Runs available repo/folder checks by default, then lets you focus on a specific robot issue if needed.</p>
+                <form id="robot-verify-form" class="stack-form">
+                  <textarea id="robot-observations" rows="4" placeholder="Optional focus: verify the arm serial path and camera pipeline, then compare observed device ports to the graph."></textarea>
+                  <button type="submit">Run Verifier</button>
+                </form>
+                <div id="robot-verifier-runs" class="robot-board-list"></div>
+              </article>
+            </aside>
+
+            <section class="card robot-graph-panel">
               <div class="repo-header">
                 <div>
-                  <h3>Graph Snapshot</h3>
-                  <p class="muted">Persistent robot state seeded for the hackathon demo stack.</p>
+                  <h3>Robot Graph</h3>
+                  <p class="muted">Interactive workspace graph built from the selected repo or folder, planner output, verifier findings, and part selections.</p>
                 </div>
-                <p id="robot-graph-revision" class="storage-badge">Revision: 0</p>
+                <p id="robot-graph-meta" class="muted">No active source</p>
               </div>
-              <div id="robot-summary-grid" class="robot-summary-grid"></div>
-              <div class="robot-column-block">
-                <h4>Connections</h4>
-                <ul id="robot-edge-list" class="simple-list"></ul>
-              </div>
-            </article>
+              <div id="robot-graph" class="robot-graph-canvas"></div>
+            </section>
 
-            <article class="card">
-              <h3>Planner Agent</h3>
-              <p class="muted">Turn a build task into an actionable integration plan against the graph.</p>
-              <form id="robot-plan-form" class="stack-form">
-                <textarea id="robot-objective" rows="4" placeholder="Mount the LeRobot arm on the ELEGOO car base and create a pick-and-drive demo." required></textarea>
-                <button type="submit">Generate Plan</button>
-              </form>
-              <pre id="robot-plan-output" class="output">No planner run yet.</pre>
-            </article>
+            <aside class="robot-rail robot-right-rail">
+              <article class="card full robot-panel">
+                <h3>Node Detail</h3>
+                <div id="robot-node-detail" class="robot-detail-panel">
+                  <p class="muted">Select a node in the graph to inspect how it was collected.</p>
+                </div>
+              </article>
 
-            <article class="card">
-              <h3>Verifier Agent</h3>
-              <p class="muted">Feed back observed ports, mismatches, or runtime notes to patch the graph.</p>
-              <form id="robot-verify-form" class="stack-form">
-                <textarea id="robot-observations" rows="5" placeholder="Observed /dev/ttyACM0 for the arm controller, but the graph expected /dev/ttyUSB0. Camera is on CSI. Audio mic is on USB." required></textarea>
-                <button type="submit">Run Verifier</button>
-              </form>
-              <pre id="robot-verify-output" class="output">No verifier run yet.</pre>
-            </article>
+              <article class="card full robot-panel">
+                <h3>Part Options</h3>
+                <p class="muted">Requirement-driven options and datasheets appear here so the team can choose what to buy or bind.</p>
+                <div id="robot-option-list" class="robot-option-list"></div>
+              </article>
 
-            <article class="card">
-              <h3>Parts Discovery</h3>
-              <p class="muted">Search the open web for parts, datasheets, and integration evidence.</p>
-              <form id="robot-discovery-form" class="stack-form">
-                <textarea id="robot-discovery-query" rows="4" placeholder="USB camera with Jetson NX CSI fallback, compact motor driver, and depth sensor options for an ELEGOO rover." required></textarea>
-                <button type="submit">Discover Parts</button>
-              </form>
-              <div id="robot-discovery-list" class="robot-discovery-list"></div>
-            </article>
-
-            <article class="card full">
-              <h3>Component Nodes</h3>
-              <div id="robot-node-grid" class="robot-node-grid"></div>
-            </article>
-
-            <article class="card full">
-              <h3>Graph Source</h3>
-              <pre id="robot-graph-output" class="output">{}</pre>
-            </article>
+              <article class="card full robot-panel">
+                <h3>Suggested Tasks</h3>
+                <p class="muted">Mission planner and verifier suggestions can be assigned to teammates and saved to the shared Task Log.</p>
+                <div id="robot-task-suggestions" class="robot-task-list"></div>
+              </article>
+            </aside>
           </div>
         </section>
 
@@ -377,6 +375,6 @@
       </div>
     </div>
 
-    <script src="./renderer.js"></script>
+    <script type="module" src="./renderer.js"></script>
   </body>
 </html>
