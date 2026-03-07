@@ -9,6 +9,27 @@
   --border: #22324a;
 }
 
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(76, 201, 240, 0);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(76, 201, 240, 0.15);
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -33,6 +54,7 @@ body {
   border-right: 1px solid var(--border);
   padding: 28px 20px;
   background: linear-gradient(180deg, #0c1322, #0a1220);
+  animation: fadeUp 480ms ease-out;
 }
 
 .sidebar h1 {
@@ -69,6 +91,20 @@ body {
 
 .content {
   padding: 24px;
+  position: relative;
+}
+
+.content::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  width: 300px;
+  height: 180px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(70, 149, 239, 0.2), transparent 65%);
+  filter: blur(14px);
+  pointer-events: none;
 }
 
 .topbar {
@@ -77,6 +113,7 @@ body {
   align-items: center;
   margin-bottom: 22px;
   gap: 16px;
+  animation: fadeUp 540ms ease-out;
 }
 
 .topbar h2 {
@@ -103,6 +140,19 @@ body {
   display: block;
 }
 
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 14px;
+}
+
+.workspace-left,
+.workspace-right {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
 .card-grid {
   display: grid;
   gap: 14px;
@@ -111,10 +161,17 @@ body {
 
 .card {
   grid-column: span 4;
-  background: var(--bg-card);
+  background: linear-gradient(180deg, rgba(17, 28, 46, 0.96), rgba(11, 18, 31, 0.95));
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  border-color: #345178;
+  box-shadow: 0 10px 32px rgba(2, 8, 18, 0.35);
 }
 
 .card.full {
@@ -161,10 +218,13 @@ button {
   background: #0e1b2f;
   color: var(--text);
   cursor: pointer;
+  transition: transform 120ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
 button:hover {
   border-color: var(--accent-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 32, 56, 0.38);
 }
 
 .account-button {
@@ -174,6 +234,7 @@ button:hover {
   font-weight: 700;
   border: none;
   min-width: 110px;
+  animation: pulseGlow 2200ms ease-in-out infinite;
 }
 
 .actions {
@@ -190,11 +251,160 @@ button:hover {
   flex-wrap: wrap;
 }
 
+.settings-shell {
+  background: linear-gradient(180deg, #0b1630, #0a1429);
+  border-radius: 24px;
+  padding: 28px;
+}
+
+.settings-eyebrow {
+  margin: 0;
+  letter-spacing: 0.26em;
+  font-size: 12px;
+  color: #62f2cc;
+}
+
+.settings-title {
+  margin-top: 8px;
+  font-size: 42px;
+  line-height: 1.1;
+}
+
+.settings-block {
+  border: 1px solid #26354f;
+  border-radius: 24px;
+  background: #030d29;
+  padding: 22px;
+  margin-top: 18px;
+}
+
+.settings-block h4 {
+  margin: 0 0 12px;
+  font-size: 26px;
+}
+
+.inline-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.secondary-action {
+  border-radius: 999px;
+  border-color: #304a72;
+  background: transparent;
+}
+
+.integration-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.danger-outline {
+  border-radius: 999px;
+  border-color: #9f3a5b;
+  color: #ffc3d4;
+  background: rgba(159, 58, 91, 0.08);
+}
+
+.danger-outline:hover {
+  border-color: #d75884;
+  box-shadow: 0 8px 20px rgba(106, 33, 59, 0.35);
+}
+
+.danger-zone {
+  border-color: #8a2f50;
+  background: rgba(86, 29, 52, 0.22);
+}
+
+.settings-footer-actions {
+  margin-top: 20px;
+}
+
+.storage-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.team-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #0a1322;
+  padding: 12px;
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.team-panel:hover {
+  transform: translateY(-2px);
+  border-color: #345178;
+}
+
+.team-panel h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0a1322;
+  color: var(--text);
+}
+
+.simple-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.simple-list li {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.simple-list li span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.empty-list {
+  color: var(--muted);
+  justify-content: flex-start;
+}
+
 .repo-grid {
   margin-top: 14px;
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+}
+
+.repo-more-wrap {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
 }
 
 .repo-card {
@@ -205,10 +415,11 @@ button:hover {
   padding: 14px;
   text-decoration: none;
   color: var(--text);
-  transition: 140ms ease;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
 .repo-card:hover {
+  transform: translateY(-3px);
   border-color: #3bc3a2;
   background: #0f1c30;
 }
@@ -302,10 +513,50 @@ button:hover {
   border-radius: 16px;
   background: #0f1a2d;
   padding: 18px;
+  animation: fadeUp 220ms ease-out;
 }
 
 .modal-card h3 {
   margin: 0 0 14px;
+}
+
+.view.section-animate .card {
+  opacity: 0;
+  animation: fadeUp 420ms ease-out forwards;
+}
+
+.view.section-animate .card:nth-child(1) {
+  animation-delay: 60ms;
+}
+
+.view.section-animate .card:nth-child(2) {
+  animation-delay: 140ms;
+}
+
+.view.section-animate .card:nth-child(3) {
+  animation-delay: 220ms;
+}
+
+.view.section-animate .card:nth-child(4) {
+  animation-delay: 300ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .topbar,
+  .modal-card,
+  .view.section-animate .card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .card:hover,
+  .team-panel:hover,
+  .repo-card:hover,
+  button:hover {
+    transform: none;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -323,6 +574,31 @@ button:hover {
   }
 
   .repo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .team-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-title {
+    font-size: 34px;
+  }
+
+  .settings-block h4 {
+    font-size: 22px;
+  }
+
+  .integration-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inline-row {
     grid-template-columns: 1fr;
   }
 }

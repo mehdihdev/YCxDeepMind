@@ -28,9 +28,13 @@ Set these in `.env`:
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
 - `SESSION_SECRET`
+- `SESSION_TTL_DAYS` (default 30)
 - `SUPABASE_SERVICE_ROLE_KEY` (needed to persist/hydrate GitHub provider tokens like `forge-server`)
 
 For GitHub repos through Supabase OAuth, ensure your Supabase GitHub provider is configured and provider tokens are enabled.
+
+Local login sessions are persisted on disk at:
+- `~/.forge-rde/sessions`
 
 ## What Works Now
 
@@ -40,15 +44,17 @@ For GitHub repos through Supabase OAuth, ensure your Supabase GitHub provider is
 - GitHub OAuth connect (`/api/auth/github/connect`) + callback handling.
 - Pull authenticated GitHub repositories (`/api/github/repos`).
 - RDE-style repository scan endpoint (`/api/rde/analyze`) for quick file/type stats.
+- Team workspace endpoints/UI: create/join/switch team, members, tasks, runs, fixes.
 
-## Project Layout
+## Team DB Setup
 
-- `src/main.js`: Electron lifecycle + local server bootstrap.
-- `src/server/index.mjs`: merged backend APIs (Forge auth/GitHub + RDE analysis).
-- `src/renderer/*`: frontend shell with auth, repo sync, and analysis UI.
+Run the SQL in:
+- `supabase/team_workspace_schema.sql`
 
-## Next Integration Step
+This creates:
+- `team_workspaces`
+- `team_members`
+- `team_tasks`
+- `team_artifacts`
 
-1. Add repo clone/import flow from selected GitHub repo into workspace.
-2. Add Robot Graph schema + ingestion pipeline from docs/code/images.
-3. Connect live bench video/audio streams and verifier metrics endpoints.
+Team workspace features are Supabase-only. If those tables are missing, team APIs will return a setup error until the schema is applied.

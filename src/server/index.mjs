@@ -1,9 +1,12 @@
 import express from "express";
 import session from "express-session";
+import sessionFileStore from "session-file-store";
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
+import os from "node:os";
 import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
@@ -15,6 +18,7 @@ const rendererDir = path.join(__dirname, "..", "renderer");
 const PORT = Number(process.env.PORT || 3030);
 const APP_URL = process.env.APP_URL || `http://127.0.0.1:${PORT}`;
 const SESSION_SECRET = process.env.SESSION_SECRET || "forge-dev-secret";
+const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "";
@@ -37,15 +41,26 @@ const supabaseAdmin = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const FileStore = sessionFileStore(session);
+const sessionDir = path.join(os.homedir(), ".forge-rde", "sessions");
+fsSync.mkdirSync(sessionDir, { recursive: true });
+
 app.use(
   session({
+    store: new FileStore({
+      path: sessionDir,
+      ttl: SESSION_TTL_DAYS * 24 * 60 * 60,
+      retries: 0
+    }),
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false
+      secure: false,
+      maxAge: SESSION_TTL_DAYS * 24 * 60 * 60 * 1000
     }
   })
 );
@@ -189,21 +204,6 @@ const TEAM_TABLES = {
   artifacts: "team_artifacts"
 };
 
-const memoryDb = {
-  workspaces: [],
-  members: [],
-  tasks: [],
-  artifacts: []
-};
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function randomId(prefix) {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
 function inviteCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
@@ -243,59 +243,6 @@ async function getAuthUsersMap(userIds) {
     map.set(userId, profile);
   }
   return map;
-}
-
-async function getTeamStateFromMemory(sessionData) {
-  const userId = sessionData?.user?.id;
-  const memberships = memoryDb.members.filter((m) => m.user_id === userId);
-  const teams = memberships
-    .map((membership) => {
-      const workspace = memoryDb.workspaces.find((w) => w.id === membership.team_id);
-      if (!workspace) return null;
-      return {
-        id: workspace.id,
-        name: workspace.name,
-        invite_code: workspace.invite_code,
-        role: membership.role
-      };
-    })
-    .filter(Boolean);
-
-  const activeTeamId = sessionData?.activeTeamId || teams[0]?.id || null;
-  if (activeTeamId) {
-    sessionData.activeTeamId = activeTeamId;
-  }
-
-  const members = memoryDb.members
-    .filter((m) => m.team_id === activeTeamId)
-    .map((m) => {
-      const profile =
-        m.user_id === userId
-          ? sanitizeUser(sessionData.user)
-          : { id: m.user_id, name: "Team member", email: "" };
-      return {
-        user_id: m.user_id,
-        role: m.role,
-        joined_at: m.joined_at,
-        user: profile
-      };
-    });
-
-  const tasks = memoryDb.tasks
-    .filter((t) => t.team_id === activeTeamId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const artifacts = memoryDb.artifacts
-    .filter((a) => a.team_id === activeTeamId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
-
-  return {
-    storage: "memory",
-    teams,
-    activeTeamId,
-    members,
-    tasks,
-    artifacts
-  };
 }
 
 async function getTeamStateFromSupabase(sessionData) {
@@ -400,14 +347,16 @@ async function getTeamStateFromSupabase(sessionData) {
 
 async function getTeamState(sessionData) {
   if (!supabaseAdmin) {
-    return getTeamStateFromMemory(sessionData);
+    throw new Error("Team workspace requires SUPABASE_SERVICE_ROLE_KEY.");
   }
 
   try {
     return await getTeamStateFromSupabase(sessionData);
   } catch (error) {
     if (missingTableError(error)) {
-      return getTeamStateFromMemory(sessionData);
+      throw new Error(
+        "Team workspace tables are missing. Run supabase/team_workspace_schema.sql first."
+      );
     }
     throw error;
   }
@@ -497,6 +446,111 @@ app.post("/api/auth/logout", (req, res) => {
   req.session.destroy(() => {
     res.json({ ok: true });
   });
+});
+
+app.post("/api/account/profile", requireAuth, requireSupabase, async (req, res) => {
+  const firstName = String(req.body?.first_name || "").trim();
+  if (!firstName) {
+    res.status(400).json({ error: "first_name is required." });
+    return;
+  }
+
+  try {
+    const userClient = await createUserClientFromSession(req.session);
+    if (!userClient) {
+      res.status(500).json({ error: "Unable to initialize user client." });
+      return;
+    }
+
+    const { data, error } = await userClient.auth.updateUser({
+      data: { first_name: firstName }
+    });
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    req.session.user = data.user;
+    res.json({ ok: true, user: sanitizeUser(data.user) });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to update profile." });
+  }
+});
+
+app.post("/api/account/password", requireAuth, requireSupabase, async (req, res) => {
+  const password = String(req.body?.password || "");
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters." });
+    return;
+  }
+
+  try {
+    const userClient = await createUserClientFromSession(req.session);
+    if (!userClient) {
+      res.status(500).json({ error: "Unable to initialize user client." });
+      return;
+    }
+
+    const { error } = await userClient.auth.updateUser({ password });
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to update password." });
+  }
+});
+
+app.post("/api/account/github/disconnect", requireAuth, requireSupabase, async (req, res) => {
+  try {
+    const userClient = await createUserClientFromSession(req.session);
+    if (!userClient) {
+      res.status(500).json({ error: "Unable to initialize user client." });
+      return;
+    }
+
+    const { error } = await userClient.auth.unlinkIdentity({
+      provider: "github"
+    });
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    req.session.githubToken = "";
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to disconnect GitHub." });
+  }
+});
+
+app.post("/api/account/delete", requireAuth, async (req, res) => {
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "SUPABASE_SERVICE_ROLE_KEY is required for account deletion." });
+    return;
+  }
+
+  try {
+    const userId = req.session.user?.id;
+    if (!userId) {
+      res.status(400).json({ error: "No authenticated user found." });
+      return;
+    }
+
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    req.session.destroy(() => {
+      res.json({ ok: true });
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to delete account." });
+  }
 });
 
 app.get("/api/auth/github/connect", requireSupabase, requireAuth, async (req, res) => {
@@ -600,6 +654,232 @@ app.post("/api/rde/analyze", requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Analyze failed." });
   }
+});
+
+app.get("/api/team/state", requireAuth, async (req, res) => {
+  try {
+    const teamState = await getTeamState(req.session);
+    res.json(teamState);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to load team state." });
+  }
+});
+
+app.post("/api/team/create", requireAuth, async (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  if (!name) {
+    res.status(400).json({ error: "Team name is required." });
+    return;
+  }
+
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "Team workspace requires SUPABASE_SERVICE_ROLE_KEY." });
+    return;
+  }
+
+  const userId = req.session.user.id;
+  const code = inviteCode();
+
+  try {
+    const insertWorkspace = await supabaseAdmin
+      .from(TEAM_TABLES.workspaces)
+      .insert({
+        name,
+        owner_user_id: userId,
+        invite_code: code
+      })
+      .select("*")
+      .single();
+    if (insertWorkspace.error) {
+      throw insertWorkspace.error;
+    }
+
+    const workspace = insertWorkspace.data;
+    const memberInsert = await supabaseAdmin.from(TEAM_TABLES.members).upsert(
+      {
+        team_id: workspace.id,
+        user_id: userId,
+        role: "owner"
+      },
+      { onConflict: "team_id,user_id" }
+    );
+    if (memberInsert.error) {
+      throw memberInsert.error;
+    }
+    req.session.activeTeamId = workspace.id;
+    res.json({ ok: true, team: workspace, storage: "supabase" });
+  } catch (err) {
+    if (missingTableError(err)) {
+      res.status(500).json({
+        error: "Team workspace tables are missing. Run supabase/team_workspace_schema.sql first."
+      });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to create team." });
+  }
+});
+
+app.post("/api/team/join", requireAuth, async (req, res) => {
+  const joinCode = String(req.body?.inviteCode || "").trim().toUpperCase();
+  if (!joinCode) {
+    res.status(400).json({ error: "Invite code is required." });
+    return;
+  }
+
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "Team workspace requires SUPABASE_SERVICE_ROLE_KEY." });
+    return;
+  }
+
+  const userId = req.session.user.id;
+
+  try {
+    const workspaceRes = await supabaseAdmin
+      .from(TEAM_TABLES.workspaces)
+      .select("*")
+      .eq("invite_code", joinCode)
+      .maybeSingle();
+    if (workspaceRes.error) {
+      throw workspaceRes.error;
+    }
+    const workspace = workspaceRes.data;
+    if (!workspace) {
+      res.status(404).json({ error: "Invite code not found." });
+      return;
+    }
+
+    const memberUpsert = await supabaseAdmin.from(TEAM_TABLES.members).upsert(
+      {
+        team_id: workspace.id,
+        user_id: userId,
+        role: "member"
+      },
+      { onConflict: "team_id,user_id" }
+    );
+    if (memberUpsert.error) {
+      throw memberUpsert.error;
+    }
+    req.session.activeTeamId = workspace.id;
+    res.json({ ok: true, team: workspace, storage: "supabase" });
+  } catch (err) {
+    if (missingTableError(err)) {
+      res.status(500).json({
+        error: "Team workspace tables are missing. Run supabase/team_workspace_schema.sql first."
+      });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to join team." });
+  }
+});
+
+app.post("/api/team/switch", requireAuth, async (req, res) => {
+  const teamId = String(req.body?.teamId || "");
+  if (!teamId) {
+    res.status(400).json({ error: "teamId is required." });
+    return;
+  }
+
+  try {
+    const state = await getTeamState(req.session);
+    if (!state.teams.some((t) => t.id === teamId)) {
+      res.status(403).json({ error: "You are not a member of that team." });
+      return;
+    }
+    req.session.activeTeamId = teamId;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to switch team." });
+  }
+});
+
+app.post("/api/team/tasks", requireAuth, async (req, res) => {
+  const title = String(req.body?.title || "").trim();
+  const assigneeUserId = String(req.body?.assigneeUserId || "").trim() || null;
+  if (!title) {
+    res.status(400).json({ error: "Task title is required." });
+    return;
+  }
+
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "Team workspace requires SUPABASE_SERVICE_ROLE_KEY." });
+    return;
+  }
+
+  const teamState = await getTeamState(req.session);
+  const teamId = req.session.activeTeamId || teamState.activeTeamId;
+  if (!teamId) {
+    res.status(400).json({ error: "Create or join a team first." });
+    return;
+  }
+
+  const insertTask = await supabaseAdmin
+    .from(TEAM_TABLES.tasks)
+    .insert({
+      team_id: teamId,
+      title,
+      status: "open",
+      assignee_user_id: assigneeUserId,
+      created_by_user_id: req.session.user.id
+    });
+  if (insertTask.error) {
+    if (missingTableError(insertTask.error)) {
+      res.status(500).json({
+        error: "Team workspace tables are missing. Run supabase/team_workspace_schema.sql first."
+      });
+      return;
+    }
+    res.status(500).json({ error: insertTask.error.message });
+    return;
+  }
+  res.json({ ok: true, storage: "supabase" });
+});
+
+app.post("/api/team/artifacts", requireAuth, async (req, res) => {
+  const type = String(req.body?.type || "").trim();
+  const title = String(req.body?.title || "").trim();
+  const summary = String(req.body?.summary || "").trim();
+  if (!["run", "fix", "plan"].includes(type)) {
+    res.status(400).json({ error: "type must be one of run, fix, plan." });
+    return;
+  }
+  if (!title) {
+    res.status(400).json({ error: "Artifact title is required." });
+    return;
+  }
+
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "Team workspace requires SUPABASE_SERVICE_ROLE_KEY." });
+    return;
+  }
+
+  const teamState = await getTeamState(req.session);
+  const teamId = req.session.activeTeamId || teamState.activeTeamId;
+  if (!teamId) {
+    res.status(400).json({ error: "Create or join a team first." });
+    return;
+  }
+
+  const insertArtifact = await supabaseAdmin
+    .from(TEAM_TABLES.artifacts)
+    .insert({
+      team_id: teamId,
+      type,
+      title,
+      summary,
+      payload: {},
+      created_by_user_id: req.session.user.id
+    });
+  if (insertArtifact.error) {
+    if (missingTableError(insertArtifact.error)) {
+      res.status(500).json({
+        error: "Team workspace tables are missing. Run supabase/team_workspace_schema.sql first."
+      });
+      return;
+    }
+    res.status(500).json({ error: insertArtifact.error.message });
+    return;
+  }
+  res.json({ ok: true, storage: "supabase" });
 });
 
 app.use(express.static(rendererDir));

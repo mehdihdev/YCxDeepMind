@@ -16,6 +16,7 @@
           <button class="nav-item" data-view="robot">My Robot</button>
           <button class="nav-item" data-view="bench">Live Bench</button>
           <button class="nav-item" data-view="artifacts">Artifacts</button>
+          <button class="nav-item" data-view="settings">Account Settings</button>
         </nav>
       </aside>
       <main class="content">
@@ -29,19 +30,91 @@
         </header>
 
         <section class="view active" id="workspace">
-          <article class="card full">
-            <div class="repo-header">
-              <div>
-                <h3>GitHub connection</h3>
-                <p class="muted" id="github-summary">Connect GitHub to load recent projects.</p>
-              </div>
-              <div class="actions">
-                <button id="github-connect" type="button">Connect GitHub</button>
-                <button id="repos-refresh" type="button">Refresh Repos</button>
-              </div>
+          <div class="workspace-layout">
+            <div class="workspace-left">
+              <article class="card full">
+                <div class="repo-header">
+                  <div>
+                    <h3>Team Workspace</h3>
+                    <p class="muted">Shared room for team members, tasks, runs, and fixes.</p>
+                  </div>
+                  <p id="team-storage-badge" class="storage-badge">Storage: unknown</p>
+                </div>
+                <div class="team-grid">
+                  <div class="team-panel">
+                    <h4>Create Team</h4>
+                    <form id="team-create-form" class="stack-form">
+                      <input id="team-name" type="text" placeholder="Forge Robotics Crew" required />
+                      <button type="submit">Create Team</button>
+                    </form>
+                    <h4>Join Team</h4>
+                    <form id="team-join-form" class="stack-form">
+                      <input id="team-invite-code" type="text" placeholder="Invite Code" required />
+                      <button type="submit">Join Team</button>
+                    </form>
+                  </div>
+                  <div class="team-panel">
+                    <h4>Current Team</h4>
+                    <form id="team-switch-form" class="stack-form">
+                      <select id="team-select"></select>
+                      <button type="submit">Switch Team</button>
+                    </form>
+                    <p id="active-team-meta" class="muted">No active team</p>
+                    <h4>Members</h4>
+                    <ul id="team-members-list" class="simple-list"></ul>
+                  </div>
+                </div>
+              </article>
+
+              <article class="card full">
+                <div class="team-grid">
+                  <div class="team-panel">
+                    <h4>Task Log</h4>
+                    <form id="team-task-form" class="stack-form">
+                      <input id="team-task-title" type="text" placeholder="Mount arm and validate pick trajectory" required />
+                      <input id="team-task-assignee" type="text" placeholder="Assignee user id (optional)" />
+                      <button type="submit">Add Task</button>
+                    </form>
+                    <ul id="team-task-list" class="simple-list"></ul>
+                  </div>
+                  <div class="team-panel">
+                    <h4>Saved Runs</h4>
+                    <form id="team-run-form" class="stack-form">
+                      <input id="team-run-title" type="text" placeholder="Run: pick-and-drive attempt #3" required />
+                      <input id="team-run-summary" type="text" placeholder="Short run summary" />
+                      <button type="submit">Save Run</button>
+                    </form>
+                    <h4>Saved Fixes</h4>
+                    <form id="team-fix-form" class="stack-form">
+                      <input id="team-fix-title" type="text" placeholder="Fix: arm mount realigned" required />
+                      <input id="team-fix-summary" type="text" placeholder="Short fix summary" />
+                      <button type="submit">Save Fix</button>
+                    </form>
+                    <ul id="team-artifact-list" class="simple-list"></ul>
+                  </div>
+                </div>
+              </article>
             </div>
-            <div id="repo-grid" class="repo-grid"></div>
-          </article>
+
+            <div class="workspace-right">
+              <article class="card full">
+                <div class="repo-header">
+                  <div>
+                    <h3>Your Repositories</h3>
+                    <p class="muted" id="github-summary">Connect GitHub to load recent projects.</p>
+                  </div>
+                  <div class="actions">
+                    <button id="github-connect" type="button">Connect GitHub</button>
+                    <button id="repos-refresh" type="button">Refresh Repos</button>
+                  </div>
+                </div>
+                <div id="repo-grid" class="repo-grid"></div>
+                <div class="repo-more-wrap">
+                  <button id="repo-show-more" type="button" class="secondary-action">Show more</button>
+                </div>
+              </article>
+            </div>
+          </div>
         </section>
 
         <section class="view" id="robot">
@@ -50,6 +123,13 @@
             <p class="muted">
               Uses an RDE-style scan endpoint to build quick repo context.
             </p>
+            <div class="stack-form">
+              <label for="robot-repo-select" class="muted">GitHub Repo (from your account)</label>
+              <select id="robot-repo-select">
+                <option value="">No repositories loaded</option>
+              </select>
+              <p id="robot-repo-meta" class="muted">Select a repository to bind as this robot's codebase.</p>
+            </div>
             <form id="analyze-form" class="stack-form">
               <input id="repo-path" type="text" placeholder="/absolute/path/to/repo" required />
               <button type="submit">Analyze Repo</button>
@@ -82,6 +162,52 @@
           <article class="card full">
             <h3>Generated Engineering Artifacts</h3>
             <p>System diagrams, failure overlays, and benchmark outputs.</p>
+          </article>
+        </section>
+
+        <section class="view" id="settings">
+          <article class="card full settings-shell">
+            <p class="settings-eyebrow">SETTINGS</p>
+            <h3 class="settings-title">Account settings</h3>
+            <p class="muted">Manage your profile, security, and integrations.</p>
+
+            <div class="settings-block">
+              <h4>Profile</h4>
+              <form id="settings-profile-form" class="stack-form">
+                <label for="settings-first-name" class="muted">First name</label>
+                <div class="inline-row">
+                  <input id="settings-first-name" type="text" placeholder="First name" required />
+                  <button type="submit">Save</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="settings-block">
+              <h4>Security</h4>
+              <form id="settings-password-form" class="stack-form">
+                <label for="settings-password" class="muted">New password</label>
+                <input id="settings-password" type="password" placeholder="Create a strong password" required />
+                <button type="submit" class="secondary-action">Update password</button>
+              </form>
+            </div>
+
+            <div class="settings-block integration-row">
+              <div>
+                <h4>GitHub integration</h4>
+                <p id="settings-github-status" class="muted">GitHub connection status unknown.</p>
+              </div>
+              <button id="settings-github-disconnect" type="button" class="danger-outline">Disconnect</button>
+            </div>
+
+            <div class="settings-block danger-zone">
+              <h4>Delete account</h4>
+              <p class="muted">This will permanently delete your account and all associated data.</p>
+              <button id="settings-delete-account" type="button" class="danger-outline">Delete account</button>
+            </div>
+
+            <div class="settings-footer-actions">
+              <button id="settings-logout" type="button">Log out</button>
+            </div>
           </article>
         </section>
       </main>
