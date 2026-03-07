@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temp files
+*.tmp
+discovered_devices.json
+
+# Large files (keep tracked elsewhere)
+*.pdf
+*.step
+*.stl
+
+# Datasets (large, store separately)
+datasets/
+*.zip

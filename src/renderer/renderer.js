@@ -3,6 +3,7 @@ import { createTeamController } from "./modules/team.js";
 import { createCodeController } from "./modules/code.js";
 import { createArtifactController } from "./modules/artifacts.js";
 import { createRobotController } from "./modules/robot.js";
+import { createLiveRobotController } from "./modules/liveRobot.js";
 
 const byId = (id) => document.getElementById(id);
 
@@ -84,7 +85,13 @@ const elements = {
   codeOpenFolderButton: byId("code-open-folder"),
   codeFileList: byId("code-file-list"),
   codeEditorMeta: byId("code-editor-meta"),
-  monacoMount: byId("monaco-editor")
+  monacoMount: byId("monaco-editor"),
+  // Live Robot elements
+  robotJetsonIp: byId("robot-jetson-ip"),
+  robotArmPort: byId("robot-arm-port"),
+  robotCameraPort: byId("robot-camera-port"),
+  robotArmState: byId("robot-arm-state"),
+  robotCameraPreview: byId("robot-camera-preview")
 };
 
 const labels = {
@@ -218,12 +225,22 @@ const artifactController = createArtifactController({
   onSaved: () => teamController.refresh()
 });
 
+const liveRobotController = createLiveRobotController({
+  elements,
+  setStatus
+});
+
 const robotController = createRobotController({
   elements,
   setStatus,
   getTeamMembers: () => teamController.getMembers(),
-  saveTaskToLog: ({ title, assigneeUserId }) => teamController.createTask({ title, assigneeUserId })
+  saveTaskToLog: ({ title, assigneeUserId }) => teamController.createTask({ title, assigneeUserId }),
+  // Pass live robot controller for component discovery
+  onComponentsDiscovered: (components) => liveRobotController.onComponentsDiscovered(components)
 });
+
+// Initialize live robot controller
+liveRobotController.init();
 
 function pushRepos(repos) {
   cachedRepos = Array.isArray(repos) ? repos : [];

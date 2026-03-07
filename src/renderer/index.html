@@ -218,6 +218,102 @@
             </section>
 
             <aside class="robot-rail robot-right-rail">
+              <!-- Discovered Components Panel (shown first) -->
+              <article class="card full robot-panel" id="robot-discovered-panel">
+                <p class="settings-eyebrow">DISCOVERED</p>
+                <h3>Robot Components</h3>
+                <div id="robot-discovered-components">
+                  <p class="muted">Sync a workspace to discover robot components. The agent will analyze your docs, code, and configs to identify what hardware you have.</p>
+                </div>
+              </article>
+
+              <!-- Live Robot Connection Panel - HIDDEN until components discovered -->
+              <article class="card full robot-panel robot-connection-panel hidden" id="robot-live-panel">
+                <p class="settings-eyebrow">LIVE ROBOT</p>
+                <h3>Connection</h3>
+                <div class="stack-form">
+                  <div class="robot-connection-row">
+                    <label class="muted">Jetson IP</label>
+                    <input id="robot-jetson-ip" type="text" placeholder="192.168.1.100" />
+                  </div>
+                  <div class="robot-connection-row">
+                    <label class="muted">Arm Server Port</label>
+                    <input id="robot-arm-port" type="text" value="8765" />
+                  </div>
+                  <div class="robot-connection-row">
+                    <label class="muted">Camera Server Port</label>
+                    <input id="robot-camera-port" type="text" value="8766" />
+                  </div>
+                  <div class="actions">
+                    <button id="robot-load-config" type="button" class="secondary-action">Load Config</button>
+                    <button id="robot-connect" type="button">Connect</button>
+                  </div>
+                </div>
+                <div id="robot-connection-status" class="robot-status-grid">
+                  <div class="robot-status-item">
+                    <span class="robot-status-dot disconnected" id="robot-arm-status-dot"></span>
+                    <span>Arm Server</span>
+                    <span id="robot-arm-status" class="muted">Disconnected</span>
+                  </div>
+                  <div class="robot-status-item">
+                    <span class="robot-status-dot disconnected" id="robot-camera-status-dot"></span>
+                    <span>Camera Server</span>
+                    <span id="robot-camera-status" class="muted">Disconnected</span>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Demo Features Panel - HIDDEN until connected -->
+              <article class="card full robot-panel robot-demo-panel hidden" id="robot-demo-panel">
+                <p class="settings-eyebrow">DEMO FEATURES</p>
+                <h3>Robot Controls</h3>
+                <div class="robot-demo-grid">
+                  <div class="robot-demo-card">
+                    <h4>Teleoperation</h4>
+                    <p class="muted">Leader arm controls follower</p>
+                    <div class="robot-toggle-row">
+                      <span id="robot-teleop-status">Off</span>
+                      <button id="robot-teleop-toggle" type="button" class="robot-toggle-btn">Enable</button>
+                    </div>
+                  </div>
+                  <div class="robot-demo-card">
+                    <h4>Calibration</h4>
+                    <p class="muted">Calibrate arm joints</p>
+                    <button id="robot-calibrate-btn" type="button">Start Wizard</button>
+                  </div>
+                  <div class="robot-demo-card">
+                    <h4>Recording</h4>
+                    <p class="muted">Record episodes for training</p>
+                    <div class="robot-toggle-row">
+                      <span id="robot-recording-status">Stopped</span>
+                      <button id="robot-record-toggle" type="button" class="robot-toggle-btn">Record</button>
+                    </div>
+                    <p id="robot-episode-count" class="muted">Episodes: 0</p>
+                  </div>
+                  <div class="robot-demo-card">
+                    <h4>Home Position</h4>
+                    <p class="muted">Move arm to home</p>
+                    <button id="robot-home-btn" type="button">Go Home</button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Live Arm State Panel - HIDDEN until connected -->
+              <article class="card full robot-panel hidden" id="robot-arm-panel">
+                <h3>Arm State</h3>
+                <div id="robot-arm-state" class="robot-arm-state">
+                  <p class="muted">Connect to see live joint positions</p>
+                </div>
+              </article>
+
+              <!-- Camera Preview Panel - HIDDEN until connected -->
+              <article class="card full robot-panel hidden" id="robot-camera-panel">
+                <h3>Camera Feed</h3>
+                <div id="robot-camera-preview" class="robot-camera-preview">
+                  <p class="muted">Connect to see camera feed</p>
+                </div>
+              </article>
+
               <article class="card full robot-panel">
                 <h3>Node Detail</h3>
                 <div id="robot-node-detail" class="robot-detail-panel">
@@ -260,10 +356,22 @@
           ">
             <span style="font-size: 16px;">&#8592;</span> Back to Forge
           </button>
+          <!-- Empty state shown until robot is discovered -->
+          <div id="bench-empty-state" class="bench-empty-state">
+            <div class="bench-empty-content">
+              <h2>No Robot Loaded</h2>
+              <p>Go to <strong>My Robot</strong>, select a workspace, and <strong>Sync</strong> to discover your robot components.</p>
+              <p class="muted">Once the agent analyzes your docs and configs, the simulation bench will load automatically.</p>
+              <button onclick="document.querySelector('[data-view=robot]').click()" style="margin-top: 16px;">
+                Go to My Robot
+              </button>
+            </div>
+          </div>
+          <!-- Iframe hidden until robot discovered -->
           <iframe
             id="bench-iframe"
-            src="/bench/"
-            style="width: 100%; height: 100%; border: none; display: block;"
+            src="about:blank"
+            style="width: 100%; height: 100%; border: none; display: none;"
             allow="camera; microphone"
           ></iframe>
         </section>

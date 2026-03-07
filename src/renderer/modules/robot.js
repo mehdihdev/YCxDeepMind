@@ -71,7 +71,7 @@ function sourcePayloadFromState(mode, repoValue, folderValue) {
   return null;
 }
 
-export function createRobotController({ elements, setStatus, getTeamMembers, saveTaskToLog }) {
+export function createRobotController({ elements, setStatus, getTeamMembers, saveTaskToLog, onComponentsDiscovered }) {
   let repos = [];
   let workspaceResponse = null;
   let selectedNodeId = "";
@@ -80,6 +80,95 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
   let graphView = null;
   let graphPositions = {};
   let graphHasFitted = false;
+
+  // Analyze graph nodes to detect robot hardware components
+  function detectRobotComponents(workspace) {
+    const nodes = workspace?.graph?.nodes || [];
+    const components = {
+      hasJetson: false,
+      hasArm: false,
+      hasCamera: false,
+      jetsonIp: null,
+      armPort: "8765",
+      cameraPort: "8766",
+      armType: null,
+      cameras: []
+    };
+
+    for (const node of nodes) {
+      const label = (node.label || "").toLowerCase();
+      const description = (node.description || "").toLowerCase();
+      const componentLabel = (node.componentLabel || "").toLowerCase();
+      const kind = (node.kind || "").toLowerCase();
+
+      // Detect Jetson / compute nodes
+      if (label.includes("jetson") || description.includes("jetson") ||
+          componentLabel.includes("compute") || kind === "compute") {
+        components.hasJetson = true;
+        // Try to extract IP from description or evidence
+        const ipMatch = description.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+        if (ipMatch) {
+          components.jetsonIp = ipMatch[1];
+        }
+      }
+
+      // Detect arm nodes
+      if (label.includes("arm") || label.includes("so-100") || label.includes("so100") ||
+          label.includes("leader") || label.includes("follower") ||
+          componentLabel.includes("arm") || kind === "arm") {
+        components.hasArm = true;
+        if (label.includes("so-100") || label.includes("so100") || description.includes("so-100")) {
+          components.armType = "SO-100";
+        } else if (label.includes("lerobot") || description.includes("lerobot")) {
+          components.armType = "LeRobot";
+        }
+      }
+
+      // Detect camera nodes
+      if (label.includes("camera") || label.includes("webcam") || label.includes("realsense") ||
+          componentLabel.includes("camera") || kind === "camera") {
+        components.hasCamera = true;
+        components.cameras.push({
+          id: node.id,
+          name: node.label || "Camera"
+        });
+      }
+
+      // Check for robot.config.json evidence
+      for (const evidence of node.evidence || []) {
+        const source = (evidence.source || evidence.url || "").toLowerCase();
+        if (source.includes("robot.config.json") || source.includes("config.json")) {
+          // Config file found - likely has connection details
+          const content = evidence.content || evidence.excerpt || "";
+          const ipMatch = content.match(/"ip"\s*:\s*"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"/);
+          if (ipMatch) {
+            components.jetsonIp = ipMatch[1];
+          }
+          const armPortMatch = content.match(/"arm"\s*:\s*\{[^}]*"port"\s*:\s*(\d+)/);
+          if (armPortMatch) {
+            components.armPort = armPortMatch[1];
+          }
+          const cameraPortMatch = content.match(/"camera"\s*:\s*\{[^}]*"port"\s*:\s*(\d+)/);
+          if (cameraPortMatch) {
+            components.cameraPort = cameraPortMatch[1];
+          }
+        }
+      }
+    }
+
+    return components;
+  }
+
+  // Notify live robot controller about discovered components
+  function notifyComponentsDiscovered(workspace) {
+    if (typeof onComponentsDiscovered !== "function") return;
+
+    const components = detectRobotComponents(workspace);
+    const hasAnyComponents = components.hasJetson || components.hasArm || components.hasCamera;
+
+    // Always call with current state - empty or populated
+    onComponentsDiscovered(components);
+  }
 
   function currentRepoValue() {
     return String(elements.robotRepoSelect?.value || getStoredRepo());
@@ -664,6 +753,9 @@ export function createRobotController({ elements, setStatus, getTeamMembers, sav
     renderTaskSuggestions();
     renderNodeDetail();
     await renderGraph();
+
+    // Notify about discovered robot components
+    notifyComponentsDiscovered(activeWorkspace());
   }
 
   async function loadWorkspace() {

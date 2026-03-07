@@ -1,0 +1,66 @@
+{
+  "arm": "follower",
+  "calibrated_at": null,
+  "joints": [
+    {
+      "id": 1,
+      "name": "base",
+      "min_raw": 1024,
+      "max_raw": 3072,
+      "min_deg": -90,
+      "max_deg": 90,
+      "home_raw": 2048,
+      "direction": 1
+    },
+    {
+      "id": 2,
+      "name": "shoulder",
+      "min_raw": 800,
+      "max_raw": 3200,
+      "min_deg": -90,
+      "max_deg": 90,
+      "home_raw": 2048,
+      "direction": 1
+    },
+    {
+      "id": 3,
+      "name": "elbow",
+      "min_raw": 1000,
+      "max_raw": 3000,
+      "min_deg": -90,
+      "max_deg": 90,
+      "home_raw": 2048,
+      "direction": 1
+    },
+    {
+      "id": 4,
+      "name": "wrist_pitch",
+      "min_raw": 1024,
+      "max_raw": 3072,
+      "min_deg": -90,
+      "max_deg": 90,
+      "home_raw": 2048,
+      "direction": 1
+    },
+    {
+      "id": 5,
+      "name": "wrist_roll",
+      "min_raw": 0,
+      "max_raw": 4095,
+      "min_deg": -180,
+      "max_deg": 180,
+      "home_raw": 2048,
+      "direction": 1
+    },
+    {
+      "id": 6,
+      "name": "gripper",
+      "min_raw": 2000,
+      "max_raw": 3000,
+      "min_deg": 0,
+      "max_deg": 100,
+      "home_raw": 2500,
+      "direction": 1
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "robot": {
+    "name": "Forge LeRobot Station",
+    "type": "so100",
+    "description": "LeRobot SO-100 arm with optional ELEGOO car base"
+  },
+
+  "jetson": {
+    "ip": "192.168.1.100",
+    "ssh_user": "jetson",
+    "ssh_key": "~/.ssh/id_rsa",
+    "workspace": "~/forge-lerobot"
+  },
+
+  "arms": {
+    "leader": {
+      "enabled": true,
+      "device": "/dev/ttyACM0",
+      "baudrate": 1000000,
+      "protocol": "dynamixel",
+      "motors": {
+        "ids": [1, 2, 3, 4, 5, 6],
+        "model": "sts3215"
+      },
+      "calibration": "./calibration/leader.json"
+    },
+    "follower": {
+      "enabled": true,
+      "device": "/dev/ttyACM1",
+      "baudrate": 1000000,
+      "protocol": "dynamixel",
+      "motors": {
+        "ids": [1, 2, 3, 4, 5, 6],
+        "model": "sts3215"
+      },
+      "calibration": "./calibration/follower.json"
+    }
+  },
+
+  "cameras": [
+    {
+      "id": "top",
+      "name": "Top Camera",
+      "device": "/dev/video0",
+      "resolution": [640, 480],
+      "fps": 30,
+      "encoding": "mjpeg",
+      "enabled": true
+    },
+    {
+      "id": "wrist",
+      "name": "Wrist Camera",
+      "device": "/dev/video2",
+      "resolution": [640, 480],
+      "fps": 30,
+      "encoding": "mjpeg",
+      "enabled": false
+    }
+  ],
+
+  "servers": {
+    "arm": {
+      "host": "0.0.0.0",
+      "port": 8765,
+      "protocol": "websocket"
+    },
+    "camera": {
+      "host": "0.0.0.0",
+      "port": 8766,
+      "protocol": "websocket"
+    }
+  },
+
+  "recording": {
+    "fps": 50,
+    "format": "lerobot-v2",
+    "output_dir": "~/lerobot-datasets",
+    "include_cameras": ["top"],
+    "include_joints": true
+  },
+
+  "teleoperation": {
+    "mode": "leader-follower",
+    "smoothing": 0.8,
+    "deadzone": 5
+  }
+}
