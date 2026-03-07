@@ -133,11 +133,18 @@
                 <button id="code-open-folder" type="button" class="secondary-action">Open Folder…</button>
               </div>
             </form>
+            <div class="code-toolbar">
+              <button id="code-open-vscode" type="button" class="secondary-action">Open in VSCode</button>
+              <button id="code-open-new-window" type="button" class="secondary-action">
+                Open in New Window
+              </button>
+            </div>
             <div class="code-layout">
               <aside class="code-files">
                 <h4>Files</h4>
                 <ul id="code-file-list" class="simple-list"></ul>
               </aside>
+              <div id="code-resizer" class="code-resizer" role="separator" aria-orientation="vertical"></div>
               <div class="code-editor-wrap">
                 <p id="code-editor-meta" class="muted">Load a repository and select a file.</p>
                 <div id="monaco-editor" class="monaco-editor"></div>

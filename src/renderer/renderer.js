@@ -54,6 +54,10 @@ const settingsLogoutButton = document.getElementById("settings-logout");
 const codeLoadForm = document.getElementById("code-load-form");
 const codeRepoSelect = document.getElementById("code-repo-select");
 const codeOpenFolderButton = document.getElementById("code-open-folder");
+const codeOpenVsCodeButton = document.getElementById("code-open-vscode");
+const codeOpenNewWindowButton = document.getElementById("code-open-new-window");
+const codeLayout = document.querySelector(".code-layout");
+const codeResizer = document.getElementById("code-resizer");
 const codeFileList = document.getElementById("code-file-list");
 const codeEditorMeta = document.getElementById("code-editor-meta");
 const monacoMount = document.getElementById("monaco-editor");
@@ -118,6 +122,13 @@ function setActiveView(viewId) {
 function setStatus(message, isError = false) {
   statusText.textContent = message;
   statusText.style.color = isError ? "#fca5a5" : "#9eb1cc";
+}
+
+function setCodePaneWidth(px) {
+  if (!codeLayout) return;
+  const clamped = Math.max(220, Math.min(620, Number(px) || 320));
+  codeLayout.style.setProperty("--code-files-width", `${clamped}px`);
+  localStorage.setItem("forge_code_files_width", String(clamped));
 }
 
 function renderRepos(repos) {
@@ -757,7 +768,7 @@ function renderTeamState(state) {
     state.members.forEach((member) => {
       const option = document.createElement("option");
       option.value = member.user_id;
-      option.textContent = member.user?.name || member.user?.email || member.user_id;
+      option.textContent = member.user?.name || "Unknown member";
       option.selected = previous === member.user_id;
       taskAssigneeInput.appendChild(option);
     });
@@ -769,7 +780,7 @@ function renderTeamState(state) {
   } else {
     state.members.forEach((member) => {
       const li = document.createElement("li");
-      const name = member.user?.name || member.user?.email || member.user_id;
+      const name = member.user?.name || "Unknown member";
       li.innerHTML = `<strong>${name}</strong><span>${member.role}</span>`;
       membersList.appendChild(li);
     });
@@ -781,8 +792,23 @@ function renderTeamState(state) {
   } else {
     state.tasks.forEach((task) => {
       const li = document.createElement("li");
-      const assignee = task.assignee_user_id ? ` • assignee: ${task.assignee_user_id}` : "";
-      li.innerHTML = `<strong>${task.title}</strong><span>${task.status}${assignee}</span>`;
+      const isCompleted = String(task.status || "").toLowerCase() === "completed";
+      const isAssignedToMe =
+        Boolean(currentSession?.user?.id) && task.assignee_user_id === currentSession.user.id;
+      const assigneeProfile = state.members.find((member) => member.user_id === task.assignee_user_id);
+      const assigneeName = assigneeProfile?.user?.name || "Unassigned";
+      li.className = `task-item${isAssignedToMe ? " assigned-me" : ""}${isCompleted ? " completed" : ""}`;
+      li.innerHTML = `
+        <label class="task-left">
+          <input type="checkbox" data-task-toggle="${task.id}" ${isCompleted ? "checked" : ""} />
+          <span class="task-bullet">•</span>
+          <span class="task-main">
+            <span class="task-title">${task.title}</span>
+            <span class="task-meta">${isCompleted ? "completed" : "open"} • ${assigneeName}</span>
+          </span>
+        </label>
+        <button type="button" class="task-delete" data-task-delete="${task.id}" aria-label="Delete task">×</button>
+      `;
       taskList.appendChild(li);
     });
   }
@@ -968,6 +994,34 @@ if (codeRepoSelect) {
   });
 }
 
+if (codeLayout) {
+  const savedWidth = Number(localStorage.getItem("forge_code_files_width") || "320");
+  setCodePaneWidth(savedWidth);
+}
+
+if (codeResizer) {
+  codeResizer.addEventListener("mousedown", (event) => {
+    if (!codeLayout) return;
+    event.preventDefault();
+    codeResizer.classList.add("dragging");
+
+    const onMove = (moveEvent) => {
+      const layoutRect = codeLayout.getBoundingClientRect();
+      const targetWidth = moveEvent.clientX - layoutRect.left;
+      setCodePaneWidth(targetWidth);
+    };
+
+    const onUp = () => {
+      codeResizer.classList.remove("dragging");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+}
+
 if (visualizerRepoSelect) {
   visualizerRepoSelect.addEventListener("change", () => {
     localStorage.setItem("forge_selected_visualizer_repo", visualizerRepoSelect.value);
@@ -1082,6 +1136,50 @@ if (codeOpenFolderButton) {
         codeEditorMeta.textContent = `Opened folder: ${result.path}`;
       }
       setStatus("Folder loaded");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (codeOpenVsCodeButton) {
+  codeOpenVsCodeButton.addEventListener("click", async () => {
+    if (!currentCodeRepoPath) {
+      setStatus("Load a repository or folder first.", true);
+      return;
+    }
+    if (!window.forgeAPI?.openInVSCode) {
+      setStatus("Open in VSCode is only available in desktop mode.", true);
+      return;
+    }
+    try {
+      const result = await window.forgeAPI.openInVSCode(currentCodeRepoPath);
+      if (!result?.ok) {
+        throw new Error(result?.error || "Could not open VSCode.");
+      }
+      setStatus("Opened in VSCode");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (codeOpenNewWindowButton) {
+  codeOpenNewWindowButton.addEventListener("click", async () => {
+    if (!currentCodeRepoPath) {
+      setStatus("Load a repository or folder first.", true);
+      return;
+    }
+    if (!window.forgeAPI?.openInSystemWindow) {
+      setStatus("Open in New Window is only available in desktop mode.", true);
+      return;
+    }
+    try {
+      const result = await window.forgeAPI.openInSystemWindow(currentCodeRepoPath);
+      if (!result?.ok) {
+        throw new Error(result?.error || "Could not open folder window.");
+      }
+      setStatus("Opened in new window");
     } catch (err) {
       setStatus(err.message, true);
     }
@@ -1400,5 +1498,36 @@ document.addEventListener("click", (event) => {
 
   if (target instanceof HTMLElement && target.dataset.codeFile) {
     loadCodeFile(target.dataset.codeFile);
+  }
+
+  if (target instanceof HTMLElement && target.dataset.taskDelete) {
+    const taskId = target.dataset.taskDelete;
+    apiJson(`/api/team/tasks/${taskId}`, { method: "DELETE" })
+      .then(async () => {
+        await refreshTeamState();
+        setStatus("Task removed");
+      })
+      .catch((err) => {
+        setStatus(err.message, true);
+      });
+  }
+});
+
+document.addEventListener("change", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.dataset.taskToggle) {
+    const taskId = target.dataset.taskToggle;
+    const status = target.checked ? "completed" : "open";
+    apiJson(`/api/team/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    })
+      .then(async () => {
+        await refreshTeamState();
+        setStatus(status === "completed" ? "Task completed" : "Task reopened");
+      })
+      .catch((err) => {
+        setStatus(err.message, true);
+      });
   }
 });

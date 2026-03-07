@@ -103,6 +103,36 @@ app.whenReady().then(() => {
     return { canceled: false, path: result.filePaths[0] };
   });
 
+  ipcMain.handle("app:open-in-vscode", async (_event, targetPath) => {
+    const resolvedPath = String(targetPath || "").trim();
+    if (!resolvedPath) {
+      return { ok: false, error: "No path provided." };
+    }
+    return new Promise((resolve) => {
+      const child = spawn("code", [resolvedPath], {
+        detached: true,
+        stdio: "ignore"
+      });
+      child.on("error", (err) => {
+        resolve({ ok: false, error: err.message || "Failed to open VSCode." });
+      });
+      child.unref();
+      resolve({ ok: true });
+    });
+  });
+
+  ipcMain.handle("app:open-in-system-window", async (_event, targetPath) => {
+    const resolvedPath = String(targetPath || "").trim();
+    if (!resolvedPath) {
+      return { ok: false, error: "No path provided." };
+    }
+    const error = await shell.openPath(resolvedPath);
+    if (error) {
+      return { ok: false, error };
+    }
+    return { ok: true };
+  });
+
   if (USE_REMOTE) {
     createWindow();
   } else {

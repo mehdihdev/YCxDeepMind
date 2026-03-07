@@ -1396,6 +1396,111 @@ app.post("/api/team/tasks", requireAuth, async (req, res) => {
   res.json({ ok: true, storage: "supabase" });
 });
 
+app.patch("/api/team/tasks/:taskId", requireAuth, async (req, res) => {
+  const taskId = String(req.params.taskId || "").trim();
+  const status = String(req.body?.status || "").trim().toLowerCase();
+  if (!taskId) {
+    res.status(400).json({ error: "taskId is required." });
+    return;
+  }
+  if (!["open", "completed"].includes(status)) {
+    res.status(400).json({ error: "status must be open or completed." });
+    return;
+  }
+
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "Team workspace requires SUPABASE_SERVICE_ROLE_KEY." });
+    return;
+  }
+
+  try {
+    const teamState = await getTeamState(req.session);
+    const teamIds = (teamState.teams || []).map((team) => team.id);
+    if (!teamIds.length) {
+      res.status(403).json({ error: "You are not a member of any team." });
+      return;
+    }
+
+    const updateRes = await supabaseAdmin
+      .from(TEAM_TABLES.tasks)
+      .update({ status })
+      .eq("id", taskId)
+      .in("team_id", teamIds)
+      .select("id")
+      .maybeSingle();
+
+    if (updateRes.error) {
+      if (missingTableError(updateRes.error)) {
+        res.status(500).json({
+          error: "Team workspace tables are missing. Run supabase/team_workspace_schema.sql first."
+        });
+        return;
+      }
+      res.status(500).json({ error: updateRes.error.message });
+      return;
+    }
+
+    if (!updateRes.data) {
+      res.status(404).json({ error: "Task not found or access denied." });
+      return;
+    }
+
+    res.json({ ok: true, storage: "supabase" });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to update task." });
+  }
+});
+
+app.delete("/api/team/tasks/:taskId", requireAuth, async (req, res) => {
+  const taskId = String(req.params.taskId || "").trim();
+  if (!taskId) {
+    res.status(400).json({ error: "taskId is required." });
+    return;
+  }
+
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "Team workspace requires SUPABASE_SERVICE_ROLE_KEY." });
+    return;
+  }
+
+  try {
+    const teamState = await getTeamState(req.session);
+    const teamIds = (teamState.teams || []).map((team) => team.id);
+    if (!teamIds.length) {
+      res.status(403).json({ error: "You are not a member of any team." });
+      return;
+    }
+
+    const deleteRes = await supabaseAdmin
+      .from(TEAM_TABLES.tasks)
+      .delete()
+      .eq("id", taskId)
+      .in("team_id", teamIds)
+      .select("id")
+      .maybeSingle();
+
+    if (deleteRes.error) {
+      if (missingTableError(deleteRes.error)) {
+        res.status(500).json({
+          error: "Team workspace tables are missing. Run supabase/team_workspace_schema.sql first."
+        });
+        return;
+      }
+      res.status(500).json({ error: deleteRes.error.message });
+      return;
+    }
+
+    if (!deleteRes.data) {
+      res.status(404).json({ error: "Task not found or access denied." });
+      return;
+    }
+
+    res.json({ ok: true, storage: "supabase" });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to delete task." });
+  }
+});
+
 app.post("/api/team/artifacts", requireAuth, async (req, res) => {
   const type = String(req.body?.type || "").trim();
   const title = String(req.body?.title || "").trim();
