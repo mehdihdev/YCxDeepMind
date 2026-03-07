@@ -1,102 +1,98 @@
-import { apiJson, escapeHtml, setHidden } from "./lib/utils.js";
-import { createTeamController } from "./modules/team.js";
-import { createCodeController } from "./modules/code.js";
-import { createArtifactController } from "./modules/artifacts.js";
-import { createRobotController } from "./modules/robot.js";
-import { createLiveRobotController } from "./modules/liveRobot.js";
+const navButtons = Array.from(document.querySelectorAll(".nav-item"));
+const views = Array.from(document.querySelectorAll(".view"));
+const title = document.getElementById("view-title");
+const meta = document.getElementById("meta");
+const statusText = document.getElementById("status-text");
 
-const byId = (id) => document.getElementById(id);
+const accountSignInButton = document.getElementById("account-signin");
+const accountSummary = document.getElementById("account-summary");
+const accountName = document.getElementById("account-name");
+const accountEmail = document.getElementById("account-email");
+const sidebarLogoutButton = document.getElementById("sidebar-logout");
+const loginForm = document.getElementById("login-form");
+const signInModal = document.getElementById("signin-modal");
+const githubConnectButton = document.getElementById("github-connect");
+const reposRefreshButton = document.getElementById("repos-refresh");
+const repoGrid = document.getElementById("repo-grid");
+const repoShowMoreButton = document.getElementById("repo-show-more");
+const workspaceRepoSearch = document.getElementById("workspace-repo-search");
+const workspaceRepoSuggestions = document.getElementById("workspace-repo-suggestions");
+const workspaceRepoSelect = document.getElementById("workspace-repo-select");
+const githubSummary = document.getElementById("github-summary");
+const robotRepoSelect = document.getElementById("robot-repo-select");
+const robotRepoSearch = document.getElementById("robot-repo-search");
+const robotRepoSuggestions = document.getElementById("robot-repo-suggestions");
+const robotRepoMeta = document.getElementById("robot-repo-meta");
+const artifactGenerateForm = document.getElementById("artifact-generate-form");
+const artifactRepoSelect = document.getElementById("artifact-repo-select");
+const artifactRepoSearch = document.getElementById("artifact-repo-search");
+const artifactRepoSuggestions = document.getElementById("artifact-repo-suggestions");
+const artifactSaveButton = document.getElementById("artifact-save-button");
+const artifactStatus = document.getElementById("artifact-status");
+const artifactTitle = document.getElementById("artifact-title");
+const artifactDescription = document.getElementById("artifact-description");
+const artifactMermaidRender = document.getElementById("artifact-mermaid-render");
+const artifactMermaid = document.getElementById("artifact-mermaid");
 
-const elements = {
-  navButtons: Array.from(document.querySelectorAll(".nav-item")),
-  views: Array.from(document.querySelectorAll(".view")),
-  title: byId("view-title"),
-  meta: byId("meta"),
-  statusText: byId("status-text"),
-  accountSignInButton: byId("account-signin"),
-  accountSummary: byId("account-summary"),
-  accountName: byId("account-name"),
-  accountEmail: byId("account-email"),
-  sidebarLogoutButton: byId("sidebar-logout"),
-  loginForm: byId("login-form"),
-  signInModal: byId("signin-modal"),
-  githubConnectButton: byId("github-connect"),
-  reposRefreshButton: byId("repos-refresh"),
-  repoGrid: byId("repo-grid"),
-  repoShowMoreButton: byId("repo-show-more"),
-  githubSummary: byId("github-summary"),
-  robotRepoSelect: byId("robot-repo-select"),
-  robotRepoMeta: byId("robot-repo-meta"),
-  robotOpenFolderButton: byId("robot-open-folder-button"),
-  robotRefreshButton: byId("robot-refresh-button"),
-  robotSourceBadge: byId("robot-source-badge"),
-  robotGraphMeta: byId("robot-graph-meta"),
-  robotGraphRevision: byId("robot-graph-revision"),
-  robotSummaryGrid: byId("robot-summary-grid"),
-  robotGraphMount: byId("robot-graph"),
-  robotPlanForm: byId("robot-plan-form"),
-  robotObjectiveInput: byId("robot-objective"),
-  robotMissionBoard: byId("robot-mission-board"),
-  robotRequirementForm: byId("robot-requirement-form"),
-  robotRequirementTitleInput: byId("robot-requirement-title"),
-  robotRequirementDescriptionInput: byId("robot-requirement-description"),
-  robotRequirementList: byId("robot-requirement-list"),
-  robotVerifyForm: byId("robot-verify-form"),
-  robotObservationsInput: byId("robot-observations"),
-  robotVerifierRuns: byId("robot-verifier-runs"),
-  robotNodeDetail: byId("robot-node-detail"),
-  robotOptionList: byId("robot-option-list"),
-  robotTaskSuggestions: byId("robot-task-suggestions"),
-  artifactGenerateForm: byId("artifact-generate-form"),
-  artifactRepoSelect: byId("artifact-repo-select"),
-  artifactSaveButton: byId("artifact-save-button"),
-  artifactStatus: byId("artifact-status"),
-  artifactTitle: byId("artifact-title"),
-  artifactDescription: byId("artifact-description"),
-  artifactMermaidRender: byId("artifact-mermaid-render"),
-  artifactMermaid: byId("artifact-mermaid"),
-  teamStorageBadge: byId("team-storage-badge"),
-  teamOpenModalButton: byId("team-open-modal"),
-  teamCreateForm: byId("team-create-form"),
-  teamJoinForm: byId("team-join-form"),
-  teamSwitchForm: byId("team-switch-form"),
-  teamSelect: byId("team-select"),
-  teamPillList: byId("team-pill-list"),
-  activeTeamMeta: byId("active-team-meta"),
-  membersList: byId("team-members-list"),
-  teamTaskForm: byId("team-task-form"),
-  taskTitleInput: byId("team-task-title"),
-  taskAssigneeInput: byId("team-task-assignee"),
-  taskList: byId("team-task-list"),
-  artifactList: byId("team-artifact-list"),
-  teamModal: byId("team-modal"),
-  teamNameInput: byId("team-name"),
-  teamInviteCodeInput: byId("team-invite-code"),
-  settingsProfileForm: byId("settings-profile-form"),
-  settingsFirstNameInput: byId("settings-first-name"),
-  settingsPasswordForm: byId("settings-password-form"),
-  settingsPasswordInput: byId("settings-password"),
-  settingsGithubStatus: byId("settings-github-status"),
-  settingsGithubDisconnectButton: byId("settings-github-disconnect"),
-  settingsDeleteAccountButton: byId("settings-delete-account"),
-  settingsLogoutButton: byId("settings-logout"),
-  codeLoadForm: byId("code-load-form"),
-  codeRepoSelect: byId("code-repo-select"),
-  codeOpenFolderButton: byId("code-open-folder"),
-  codeFileList: byId("code-file-list"),
-  codeEditorMeta: byId("code-editor-meta"),
-  monacoMount: byId("monaco-editor"),
-  // Live Robot elements
-  robotJetsonIp: byId("robot-jetson-ip"),
-  robotArmPort: byId("robot-arm-port"),
-  robotCameraPort: byId("robot-camera-port"),
-  robotArmState: byId("robot-arm-state"),
-  robotCameraPreview: byId("robot-camera-preview")
-};
+const teamStorageBadge = document.getElementById("team-storage-badge");
+const teamOpenModalButton = document.getElementById("team-open-modal");
+const teamCreateForm = document.getElementById("team-create-form");
+const teamJoinForm = document.getElementById("team-join-form");
+const teamSwitchForm = document.getElementById("team-switch-form");
+const teamSelect = document.getElementById("team-select");
+const teamPillList = document.getElementById("team-pill-list");
+const activeTeamMeta = document.getElementById("active-team-meta");
+const membersList = document.getElementById("team-members-list");
+
+const taskForm = document.getElementById("team-task-form");
+const taskTitleInput = document.getElementById("team-task-title");
+const taskAssigneeInput = document.getElementById("team-task-assignee");
+const taskList = document.getElementById("team-task-list");
+
+const artifactList = document.getElementById("team-artifact-list");
+const settingsProfileForm = document.getElementById("settings-profile-form");
+const settingsFirstNameInput = document.getElementById("settings-first-name");
+const settingsPasswordForm = document.getElementById("settings-password-form");
+const settingsPasswordInput = document.getElementById("settings-password");
+const settingsGithubStatus = document.getElementById("settings-github-status");
+const settingsGithubDisconnectButton = document.getElementById("settings-github-disconnect");
+const settingsDeleteAccountButton = document.getElementById("settings-delete-account");
+const settingsLogoutButton = document.getElementById("settings-logout");
+const codeLoadForm = document.getElementById("code-load-form");
+const codeRepoSelect = document.getElementById("code-repo-select");
+const codeRepoSearch = document.getElementById("code-repo-search");
+const codeRepoSuggestions = document.getElementById("code-repo-suggestions");
+const codeOpenFolderButton = document.getElementById("code-open-folder");
+const codeOpenVsCodeButton = document.getElementById("code-open-vscode");
+const codeOpenNewWindowButton = document.getElementById("code-open-new-window");
+const codeLayout = document.querySelector(".code-layout");
+const codeEditorWrap = document.querySelector(".code-editor-wrap");
+const codeResizer = document.getElementById("code-resizer");
+const codeFileList = document.getElementById("code-file-list");
+const codeEditorMeta = document.getElementById("code-editor-meta");
+const monacoMount = document.getElementById("monaco-editor");
+const codeTerminal = document.getElementById("code-terminal");
+const terminalMount = document.getElementById("terminal-xterm");
+const terminalResizer = document.getElementById("terminal-resizer");
+const terminalClearButton = document.getElementById("terminal-clear");
+const terminalRestartButton = document.getElementById("terminal-restart");
+const visualizerLoadForm = document.getElementById("visualizer-load-form");
+const visualizerRepoSelect = document.getElementById("visualizer-repo-select");
+const visualizerRepoSearch = document.getElementById("visualizer-repo-search");
+const visualizerRepoSuggestions = document.getElementById("visualizer-repo-suggestions");
+const visualizerOpenFolderButton = document.getElementById("visualizer-open-folder");
+const visualizerStats = document.getElementById("visualizer-stats");
+const visualizerGraphMount = document.getElementById("visualizer-graph");
+
+const analyzeForm = document.getElementById("analyze-form");
+const repoPathInput = document.getElementById("repo-path");
+const analysisOutput = document.getElementById("analysis-output");
+const teamModal = document.getElementById("team-modal");
 
 const labels = {
   workspace: "Team Workspace",
   code: "Code Workspace",
+  visualizer: "Repository Visualizer",
   robot: "My Robot",
   bench: "Live Bench",
   artifacts: "Artifacts",
@@ -116,7 +112,18 @@ let mermaidLoaded = false;
 let visLoaded = false;
 let visNetwork = null;
 let currentCodeRepoPath = "";
+let currentCodeFilePath = "";
+let currentCodeRepoFullName = "";
+let currentCodeRef = "";
+let currentCodeSource = "local";
+let currentCodeFiles = [];
+const expandedCodeDirs = new Set();
 let currentVisualizerRepoPath = "";
+let terminalUnsubscribeData = null;
+let terminalUnsubscribeExit = null;
+let terminalInstance = null;
+let terminalFitAddon = null;
+let terminalStarted = false;
 let currentTeamState = {
   storage: "unknown",
   teams: [],
@@ -127,17 +134,25 @@ let currentTeamState = {
 };
 
 function setActiveView(viewId) {
-  for (const button of elements.navButtons) {
-    button.classList.toggle("active", button.dataset.view === viewId);
-  }
-  for (const view of elements.views) {
+  navButtons.forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === viewId);
+  });
+
+  views.forEach((view) => {
     view.classList.toggle("active", view.id === viewId);
-  }
-  if (elements.title) {
-    elements.title.textContent = labels[viewId] || "Forge RDE";
-  }
-  // Toggle fullscreen mode for bench view
-  document.body.classList.toggle("bench-active", viewId === "bench");
+    if (view.id === viewId) {
+      view.classList.remove("section-animate");
+      void view.offsetWidth;
+      view.classList.add("section-animate");
+    }
+  });
+
+  title.textContent = labels[viewId] || "Forge RDE";
+}
+
+function setStatus(message, isError = false) {
+  statusText.textContent = message;
+  statusText.style.color = isError ? "#fca5a5" : "#9eb1cc";
 }
 
 function setCodePaneWidth(px) {
@@ -348,15 +363,36 @@ async function startWorkspaceTerminal(cwd) {
 function renderRepos(repos) {
   cachedRepos = repos;
   repoGrid.innerHTML = "";
+
+  if (workspaceRepoSelect) {
+    const selected = localStorage.getItem("forge_selected_workspace_repo") || "";
+    workspaceRepoSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "All repositories";
+    workspaceRepoSelect.appendChild(placeholder);
+    repos.forEach((repo) => {
+      const option = document.createElement("option");
+      option.value = repo.full_name;
+      option.textContent = repo.full_name;
+      option.selected = selected === repo.full_name;
+      workspaceRepoSelect.appendChild(option);
+    });
+  }
+
   if (!repos.length) {
-    elements.repoGrid.innerHTML = '<div class="empty-repo">No repositories loaded yet.</div>';
-    if (elements.repoShowMoreButton) {
-      elements.repoShowMoreButton.style.display = "none";
+    repoGrid.innerHTML = '<div class="empty-repo">No repositories found yet.</div>';
+    if (repoShowMoreButton) {
+      repoShowMoreButton.style.display = "none";
     }
+    renderRobotRepoSelector();
+    renderCodeRepoSelector();
+    renderVisualizerRepoSelector();
     return;
   }
 
-  const visibleRepos = showAllRepos ? repos : repos.slice(0, 6);
+  const filteredRepos = filterReposByQuery(workspaceRepoSearch?.value || "");
+  const visibleRepos = showAllRepos ? filteredRepos : filteredRepos.slice(0, 6);
   visibleRepos.forEach((repo) => {
     const card = document.createElement("a");
     card.className = "repo-card";
@@ -380,25 +416,30 @@ function renderRepos(repos) {
   });
 
   if (repoShowMoreButton) {
-    if (repos.length <= 6) {
+    if (filteredRepos.length <= 6) {
       repoShowMoreButton.style.display = "none";
     } else {
-      elements.repoShowMoreButton.style.display = "inline-flex";
-      elements.repoShowMoreButton.textContent = showAllRepos ? "Show less" : "Show more";
+      repoShowMoreButton.style.display = "inline-flex";
+      repoShowMoreButton.textContent = showAllRepos ? "Show less" : "Show more";
     }
   }
+
+  renderRobotRepoSelector();
+  renderCodeRepoSelector();
+  renderVisualizerRepoSelector();
 }
 
 function renderRobotRepoSelector() {
   if (!robotRepoSelect) return;
 
   const saved = localStorage.getItem("forge_selected_robot_repo") || "";
+  const filteredRepos = filterReposByQuery(robotRepoSearch?.value);
   robotRepoSelect.innerHTML = "";
 
-  if (!cachedRepos.length) {
+  if (!filteredRepos.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No repositories loaded";
+    option.textContent = cachedRepos.length ? "No matching repositories" : "No repositories loaded";
     robotRepoSelect.appendChild(option);
     if (robotRepoMeta) {
       robotRepoMeta.textContent = "Connect GitHub and refresh repos to select one.";
@@ -411,7 +452,7 @@ function renderRobotRepoSelector() {
   placeholder.textContent = "Select a repository";
   robotRepoSelect.appendChild(placeholder);
 
-  cachedRepos.forEach((repo) => {
+  filteredRepos.forEach((repo) => {
     const option = document.createElement("option");
     option.value = repo.full_name;
     option.textContent = repo.full_name;
@@ -446,12 +487,13 @@ function renderArtifactRepoSelector() {
   if (!artifactRepoSelect) return;
 
   const saved = localStorage.getItem("forge_selected_artifact_repo") || "";
+  const filteredRepos = filterReposByQuery(artifactRepoSearch?.value);
   artifactRepoSelect.innerHTML = "";
 
-  if (!cachedRepos.length) {
+  if (!filteredRepos.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No repositories loaded";
+    option.textContent = cachedRepos.length ? "No matching repositories" : "No repositories loaded";
     artifactRepoSelect.appendChild(option);
     return;
   }
@@ -461,25 +503,27 @@ function renderArtifactRepoSelector() {
   placeholder.textContent = "Select a repository";
   artifactRepoSelect.appendChild(placeholder);
 
-  cachedRepos.forEach((repo) => {
+  filteredRepos.forEach((repo) => {
     const option = document.createElement("option");
     option.value = repo.full_name;
     option.textContent = repo.full_name;
     option.selected = saved === repo.full_name;
     artifactRepoSelect.appendChild(option);
   });
+
 }
 
 function renderCodeRepoSelector() {
   if (!codeRepoSelect) return;
 
   const saved = localStorage.getItem("forge_selected_code_repo") || "";
+  const filteredRepos = filterReposByQuery(codeRepoSearch?.value);
   codeRepoSelect.innerHTML = "";
 
-  if (!cachedRepos.length) {
+  if (!filteredRepos.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No repositories loaded";
+    option.textContent = cachedRepos.length ? "No matching repositories" : "No repositories loaded";
     codeRepoSelect.appendChild(option);
     return;
   }
@@ -489,25 +533,27 @@ function renderCodeRepoSelector() {
   placeholder.textContent = "Select a repository";
   codeRepoSelect.appendChild(placeholder);
 
-  cachedRepos.forEach((repo) => {
+  filteredRepos.forEach((repo) => {
     const option = document.createElement("option");
     option.value = repo.full_name;
     option.textContent = repo.full_name;
     option.selected = saved === repo.full_name;
     codeRepoSelect.appendChild(option);
   });
+
 }
 
 function renderVisualizerRepoSelector() {
   if (!visualizerRepoSelect) return;
 
   const saved = localStorage.getItem("forge_selected_visualizer_repo") || "";
+  const filteredRepos = filterReposByQuery(visualizerRepoSearch?.value);
   visualizerRepoSelect.innerHTML = "";
 
-  if (!cachedRepos.length) {
+  if (!filteredRepos.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No repositories loaded";
+    option.textContent = cachedRepos.length ? "No matching repositories" : "No repositories loaded";
     visualizerRepoSelect.appendChild(option);
     if (visualizerStats) {
       visualizerStats.textContent = "Connect GitHub and refresh repos to build a graph.";
@@ -520,13 +566,14 @@ function renderVisualizerRepoSelector() {
   placeholder.textContent = "Select a repository";
   visualizerRepoSelect.appendChild(placeholder);
 
-  cachedRepos.forEach((repo) => {
+  filteredRepos.forEach((repo) => {
     const option = document.createElement("option");
     option.value = repo.full_name;
     option.textContent = repo.full_name;
     option.selected = saved === repo.full_name;
     visualizerRepoSelect.appendChild(option);
   });
+
 }
 
 function wrapText(text, maxCharsPerLine = 34, maxLines = 4) {
@@ -568,62 +615,301 @@ function wrapText(text, maxCharsPerLine = 34, maxLines = 4) {
 }
 
 function openSignInModal() {
-  if (!elements.signInModal) return;
-  elements.signInModal.classList.remove("hidden");
-  elements.signInModal.setAttribute("aria-hidden", "false");
+  signInModal.classList.remove("hidden");
+  signInModal.classList.remove("closing");
+  signInModal.classList.add("opening");
+  signInModal.setAttribute("aria-hidden", "false");
 }
 
 function closeSignInModal() {
-  if (!elements.signInModal) return;
-  elements.signInModal.classList.add("hidden");
-  elements.signInModal.setAttribute("aria-hidden", "true");
+  signInModal.classList.remove("opening");
+  signInModal.classList.add("closing");
+  setTimeout(() => {
+    signInModal.classList.add("hidden");
+    signInModal.setAttribute("aria-hidden", "true");
+    signInModal.classList.remove("closing");
+  }, 220);
 }
 
-const teamController = createTeamController({
-  elements,
-  setStatus
-});
-
-const codeController = createCodeController({
-  elements,
-  setStatus
-});
-
-const artifactController = createArtifactController({
-  elements,
-  setStatus,
-  onSaved: () => teamController.refresh()
-});
-
-const liveRobotController = createLiveRobotController({
-  elements,
-  setStatus
-});
-
-const robotController = createRobotController({
-  elements,
-  setStatus,
-  getTeamMembers: () => teamController.getMembers(),
-  saveTaskToLog: ({ title, assigneeUserId }) => teamController.createTask({ title, assigneeUserId }),
-  // Pass live robot controller for component discovery
-  onComponentsDiscovered: (components) => liveRobotController.onComponentsDiscovered(components)
-});
-
-// Initialize live robot controller
-liveRobotController.init();
-
-function pushRepos(repos) {
-  cachedRepos = Array.isArray(repos) ? repos : [];
-  renderRepoGrid(cachedRepos);
-  codeController.setRepos(cachedRepos);
-  artifactController.setRepos(cachedRepos);
-  robotController.setRepos(cachedRepos);
+function openTeamModal() {
+  if (!teamModal) return;
+  teamModal.classList.remove("hidden");
+  teamModal.classList.remove("closing");
+  teamModal.classList.add("opening");
+  teamModal.setAttribute("aria-hidden", "false");
 }
 
-async function refreshRepos() {
-  if (!currentSession.user) return;
-  if (!currentSession.githubConnected) {
-    pushRepos([]);
+function closeTeamModal() {
+  if (!teamModal) return;
+  teamModal.classList.remove("opening");
+  teamModal.classList.add("closing");
+  setTimeout(() => {
+    teamModal.classList.add("hidden");
+    teamModal.setAttribute("aria-hidden", "true");
+    teamModal.classList.remove("closing");
+  }, 220);
+}
+
+async function apiJson(path, options = {}) {
+  const res = await fetch(path, {
+    credentials: "include",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `Request failed (${res.status})`);
+  }
+  return data;
+}
+
+function inferLanguage(filePath) {
+  const lower = String(filePath || "").toLowerCase();
+  if (lower.endsWith(".ts")) return "typescript";
+  if (lower.endsWith(".tsx")) return "typescript";
+  if (lower.endsWith(".js")) return "javascript";
+  if (lower.endsWith(".jsx")) return "javascript";
+  if (lower.endsWith(".py")) return "python";
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".md")) return "markdown";
+  if (lower.endsWith(".css")) return "css";
+  if (lower.endsWith(".html")) return "html";
+  if (lower.endsWith(".yml") || lower.endsWith(".yaml")) return "yaml";
+  if (lower.endsWith(".sql")) return "sql";
+  return "plaintext";
+}
+
+async function ensureMonacoLoaded() {
+  if (monacoLoaded) return true;
+  if (!monacoMount) return false;
+
+  try {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+
+    await new Promise((resolve) => {
+      window.require.config({
+        paths: {
+          vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs"
+        }
+      });
+      window.require(["vs/editor/editor.main"], resolve);
+    });
+
+    monacoEditor = window.monaco.editor.create(monacoMount, {
+      value: "// Load a repository, then click a file.",
+      language: "javascript",
+      theme: "vs-dark",
+      automaticLayout: true,
+      minimap: { enabled: true },
+      fontSize: 13
+    });
+    monacoLoaded = true;
+    return true;
+  } catch {
+    if (codeEditorMeta) {
+      codeEditorMeta.textContent =
+        "Could not load Monaco from CDN. Check internet connection and retry.";
+    }
+    return false;
+  }
+}
+
+async function ensureMermaidLoaded() {
+  if (mermaidLoaded) return true;
+  try {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    window.mermaid.initialize({
+      startOnLoad: false,
+      theme: "dark",
+      securityLevel: "loose"
+    });
+    mermaidLoaded = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureVisNetworkLoaded() {
+  if (visLoaded) return true;
+  try {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/vis-network/standalone/umd/vis-network.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    visLoaded = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function renderRepositoryGraph(graphData) {
+  if (!visualizerGraphMount) return;
+  const ok = await ensureVisNetworkLoaded();
+  if (!ok || !window.vis?.Network) {
+    if (visualizerStats) {
+      visualizerStats.textContent =
+        "Could not load graph renderer. Check internet connection and try again.";
+    }
+    return;
+  }
+
+  const localNodes = new Set(
+    (graphData.nodes || []).map((node) => node.id)
+  );
+  const edges = (graphData.edges || [])
+    .filter(
+      (edge) =>
+        (edge.type === "local" || edge.type === "contains") &&
+        localNodes.has(edge.from) &&
+        localNodes.has(edge.to)
+    )
+    .slice(0, 3000);
+
+  const nodes = (graphData.nodes || []).map((node) => {
+    const isRoot = node.id === "__repo_root__";
+    const summaryText = isRoot
+      ? `Project Root\n${graphData.stats?.totalFiles ?? 0} items`
+      : wrapText(node.summary || "No summary available.", 36, 5);
+    const nameText = isRoot ? "Project Root" : node.label;
+    return {
+      id: node.id,
+      label: `${summaryText}\n\n${nameText}`,
+      title: undefined,
+      group: isRoot ? "root" : node.group || "file"
+    };
+  });
+
+  const dataset = {
+    nodes: new window.vis.DataSet(nodes),
+    edges: new window.vis.DataSet(
+      edges.map((edge) => ({
+        from: edge.from,
+        to: edge.to,
+        arrows: "to",
+        color:
+          edge.type === "contains"
+            ? { color: "#31445f", highlight: "#5789c6" }
+            : { color: "#4b6489", highlight: "#6fb2ff" }
+      }))
+    )
+  };
+
+  if (visNetwork) {
+    visNetwork.destroy();
+  }
+
+  visNetwork = new window.vis.Network(visualizerGraphMount, dataset, {
+    autoResize: true,
+    layout: {
+      improvedLayout: true
+    },
+    physics: {
+      stabilization: { iterations: 280, fit: true },
+      barnesHut: {
+        gravitationalConstant: -7600,
+        centralGravity: 0.08,
+        springLength: 50,
+        springConstant: 0.015,
+        damping: 0.24,
+        avoidOverlap: 0.8
+      }
+    },
+    interaction: {
+      hover: false,
+      tooltipDelay: 120,
+      navigationButtons: true,
+      keyboard: true
+    },
+    nodes: {
+      shape: "box",
+      margin: { top: 18, right: 20, bottom: 18, left: 20 },
+      widthConstraint: { minimum: 220, maximum: 290 },
+      borderWidth: 1.5,
+      borderWidthSelected: 2,
+      shadow: {
+        enabled: true,
+        color: "rgba(0, 0, 0, 0.35)",
+        size: 12,
+        x: 0,
+        y: 6
+      },
+      font: {
+        color: "#f0f5ff",
+        size: 14,
+        face: "Avenir Next, Inter, Segoe UI, Helvetica Neue, sans-serif"
+      },
+      labelHighlightBold: false
+    },
+    edges: {
+      smooth: {
+        enabled: true
+      },
+      width: 2,
+      color: { color: "#4b5d78", highlight: "#68b4ff" }
+    },
+    groups: {
+      root: { color: { background: "#184b2f", border: "#34d184" } },
+      ts: { color: { background: "#1f2b44", border: "#5e8fd6" } },
+      js: { color: { background: "#2a2a3b", border: "#8493dd" } },
+      jsx: { color: { background: "#21313f", border: "#66bdd4" } },
+      tsx: { color: { background: "#1f3045", border: "#61a9e7" } },
+      json: { color: { background: "#352f24", border: "#cda45e" } },
+      md: { color: { background: "#2c2f34", border: "#9aa1ab" } },
+      file: { color: { background: "#1d2230", border: "#69748a" } }
+    }
+  });
+}
+
+function normalizeMermaidGraph(input) {
+  let text = String(input || "").trim();
+  if (!text) return text;
+
+  // Convert single-line mermaid syntax with semicolons into new lines.
+  if (text.includes(";") && !text.includes("\n")) {
+    text = text
+      .split(";")
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  // Normalize graph keyword if present.
+  if (text.startsWith("graph LR")) {
+    text = text.replace(/^graph\\s+LR/, "flowchart LR");
+  }
+  return text;
+}
+
+async function renderArtifactDiagram(mermaidSource) {
+  if (!artifactMermaidRender || !artifactMermaid) return;
+  const normalized = normalizeMermaidGraph(mermaidSource);
+  artifactMermaid.textContent = normalized;
+
+  const ok = await ensureMermaidLoaded();
+  if (!ok) {
+    artifactMermaidRender.innerHTML = "";
     return;
   }
 
@@ -637,17 +923,94 @@ async function refreshRepos() {
   }
 }
 
-function renderCodeFiles(files) {
+function seedExpandedCodeDirs(files) {
+  expandedCodeDirs.clear();
+  files.forEach((filePath) => {
+    const parts = String(filePath || "").split("/").filter(Boolean);
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      if (i <= 1) {
+        expandedCodeDirs.add(parts.slice(0, i + 1).join("/"));
+      }
+    }
+  });
+}
+
+function buildCodeTree(files) {
+  const root = { dirs: new Map(), files: [] };
+  files.forEach((filePath) => {
+    const parts = String(filePath || "").split("/").filter(Boolean);
+    let node = root;
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
+      const isFile = i === parts.length - 1;
+      if (isFile) {
+        node.files.push({ name: part, path: filePath });
+      } else {
+        if (!node.dirs.has(part)) {
+          const dirPath = parts.slice(0, i + 1).join("/");
+          node.dirs.set(part, { name: part, path: dirPath, dirs: new Map(), files: [] });
+        }
+        node = node.dirs.get(part);
+      }
+    }
+  });
+  return root;
+}
+
+function renderCodeTreeLevel(node, mount, depth = 0) {
+  const dirs = Array.from(node.dirs.values()).sort((a, b) => a.name.localeCompare(b.name));
+  const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
+
+  dirs.forEach((dir) => {
+    const li = document.createElement("li");
+    li.className = "tree-node";
+
+    const expanded = expandedCodeDirs.has(dir.path);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "tree-dir-btn";
+    toggle.dataset.treeToggle = dir.path;
+    toggle.style.setProperty("--tree-depth", String(depth));
+    toggle.innerHTML = `
+      <span class="tree-chevron">${expanded ? "▾" : "▸"}</span>
+      <span class="tree-folder">📁</span>
+      <span class="tree-label">${dir.name}</span>
+    `;
+    li.appendChild(toggle);
+
+    const children = document.createElement("ul");
+    children.className = `tree-children${expanded ? "" : " hidden"}`;
+    renderCodeTreeLevel(dir, children, depth + 1);
+    li.appendChild(children);
+    mount.appendChild(li);
+  });
+
+  files.forEach((file) => {
+    const li = document.createElement("li");
+    li.className = "tree-node";
+    li.innerHTML = `
+      <button type="button" class="code-file-btn tree-file-btn" data-code-file="${file.path}" style="--tree-depth:${depth}">
+        <span class="tree-file">📄</span>
+        <span class="tree-label">${file.name}</span>
+      </button>
+    `;
+    mount.appendChild(li);
+  });
+}
+
+function renderCodeFiles(files, { preserveExpansion = false } = {}) {
+  currentCodeFiles = files.slice();
   codeFileList.innerHTML = "";
+  codeFileList.classList.add("code-tree");
   if (!files.length) {
     codeFileList.innerHTML = '<li class="empty-list">No files found.</li>';
     return;
   }
-  files.forEach((filePath) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<button type="button" class="code-file-btn" data-code-file="${filePath}">${filePath}</button>`;
-    codeFileList.appendChild(li);
-  });
+  if (!preserveExpansion) {
+    seedExpandedCodeDirs(files);
+  }
+  const tree = buildCodeTree(files);
+  renderCodeTreeLevel(tree, codeFileList, 0);
 }
 
 async function loadCodeTreeByPath(repoPath) {
@@ -655,37 +1018,59 @@ async function loadCodeTreeByPath(repoPath) {
     method: "GET"
   });
   currentCodeRepoPath = data.repoPath;
+  currentCodeRepoFullName = "";
+  currentCodeRef = "";
+  currentCodeSource = "local";
+  currentCodeFilePath = "";
   renderCodeFiles(data.files || []);
   if (codeEditorMeta) {
     codeEditorMeta.textContent = `Loaded ${data.files.length} files from ${data.repoPath}`;
   }
   await ensureMonacoLoaded();
+  await startWorkspaceTerminal(data.repoPath);
 }
 
 async function loadCodeFile(filePath) {
-  if (!currentCodeRepoPath || !filePath) return;
+  if (!filePath) return;
 
   try {
-    const data = await apiJson(
-      `/api/code/file?repoPath=${encodeURIComponent(currentCodeRepoPath)}&filePath=${encodeURIComponent(
-        filePath
-      )}`,
-      { method: "GET" }
-    );
+    let data;
+    if (currentCodeSource === "github") {
+      if (!currentCodeRepoFullName) return;
+      data = await apiJson(
+        `/api/code/file/github?repoFullName=${encodeURIComponent(
+          currentCodeRepoFullName
+        )}&filePath=${encodeURIComponent(filePath)}&ref=${encodeURIComponent(currentCodeRef || "")}`,
+        { method: "GET" }
+      );
+    } else {
+      if (!currentCodeRepoPath) return;
+      data = await apiJson(
+        `/api/code/file?repoPath=${encodeURIComponent(currentCodeRepoPath)}&filePath=${encodeURIComponent(
+          filePath
+        )}`,
+        { method: "GET" }
+      );
+    }
 
     const ok = await ensureMonacoLoaded();
     if (ok && monacoEditor) {
-      const model = window.monaco.editor.createModel(
-        data.content,
-        inferLanguage(filePath),
-        window.monaco.Uri.parse(`inmemory://forge/${filePath}`)
-      );
+      const model = window.monaco.editor.createModel(data.content, inferLanguage(filePath));
       monacoEditor.setModel(model);
+      monacoEditor.updateOptions({
+        readOnly: Boolean(data.readOnly || currentCodeSource === "github")
+      });
+      monacoEditor.layout();
     }
 
     if (codeEditorMeta) {
-      codeEditorMeta.textContent = `${data.repoPath} • ${data.filePath}`;
+      if (currentCodeSource === "github") {
+        codeEditorMeta.textContent = `${data.repoFullName} @ ${data.ref} • ${data.filePath} • read-only`;
+      } else {
+        codeEditorMeta.textContent = `${data.repoPath} • ${data.filePath}`;
+      }
     }
+    currentCodeFilePath = data.filePath;
     setStatus(`Opened ${filePath}`);
   } catch (err) {
     setStatus(err.message, true);
@@ -736,7 +1121,7 @@ function renderTeamState(state) {
     state.members.forEach((member) => {
       const option = document.createElement("option");
       option.value = member.user_id;
-      option.textContent = member.user?.name || member.user?.email || member.user_id;
+      option.textContent = member.user?.name || "Unknown member";
       option.selected = previous === member.user_id;
       taskAssigneeInput.appendChild(option);
     });
@@ -748,7 +1133,7 @@ function renderTeamState(state) {
   } else {
     state.members.forEach((member) => {
       const li = document.createElement("li");
-      const name = member.user?.name || member.user?.email || member.user_id;
+      const name = member.user?.name || "Unknown member";
       li.innerHTML = `<strong>${name}</strong><span>${member.role}</span>`;
       membersList.appendChild(li);
     });
@@ -760,8 +1145,23 @@ function renderTeamState(state) {
   } else {
     state.tasks.forEach((task) => {
       const li = document.createElement("li");
-      const assignee = task.assignee_user_id ? ` • assignee: ${task.assignee_user_id}` : "";
-      li.innerHTML = `<strong>${task.title}</strong><span>${task.status}${assignee}</span>`;
+      const isCompleted = String(task.status || "").toLowerCase() === "completed";
+      const isAssignedToMe =
+        Boolean(currentSession?.user?.id) && task.assignee_user_id === currentSession.user.id;
+      const assigneeProfile = state.members.find((member) => member.user_id === task.assignee_user_id);
+      const assigneeName = assigneeProfile?.user?.name || "Unassigned";
+      li.className = `task-item${isAssignedToMe ? " assigned-me" : ""}${isCompleted ? " completed" : ""}`;
+      li.innerHTML = `
+        <label class="task-left">
+          <input type="checkbox" data-task-toggle="${task.id}" ${isCompleted ? "checked" : ""} />
+          <span class="task-bullet">•</span>
+          <span class="task-main">
+            <span class="task-title">${task.title}</span>
+            <span class="task-meta">${isCompleted ? "completed" : "open"} • ${assigneeName}</span>
+          </span>
+        </label>
+        <button type="button" class="task-delete" data-task-delete="${task.id}" aria-label="Delete task">×</button>
+      `;
       taskList.appendChild(li);
     });
   }
@@ -927,6 +1327,28 @@ if (repoShowMoreButton) {
   });
 }
 
+if (workspaceRepoSearch) {
+  workspaceRepoSearch.addEventListener("input", () => {
+    renderRepos(cachedRepos);
+    renderRepoSuggestions(workspaceRepoSearch, workspaceRepoSuggestions, workspaceRepoSelect);
+  });
+  workspaceRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(workspaceRepoSearch, workspaceRepoSuggestions, workspaceRepoSelect);
+  });
+  workspaceRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => workspaceRepoSuggestions?.classList.add("hidden"), 120);
+  });
+}
+
+if (workspaceRepoSelect) {
+  workspaceRepoSelect.addEventListener("change", () => {
+    const selected = workspaceRepoSelect.value;
+    localStorage.setItem("forge_selected_workspace_repo", selected);
+    workspaceRepoSearch.value = selected;
+    renderRepos(cachedRepos);
+  });
+}
+
 if (robotRepoSelect) {
   robotRepoSelect.addEventListener("change", () => {
     const selected = robotRepoSelect.value;
@@ -935,15 +1357,116 @@ if (robotRepoSelect) {
   });
 }
 
-if (elements.settingsLogoutButton) {
-  elements.settingsLogoutButton.addEventListener("click", () => {
-    elements.sidebarLogoutButton?.click();
+if (artifactRepoSelect) {
+  artifactRepoSelect.addEventListener("change", () => {
+    localStorage.setItem("forge_selected_artifact_repo", artifactRepoSelect.value);
   });
 }
 
 if (codeRepoSelect) {
   codeRepoSelect.addEventListener("change", () => {
     localStorage.setItem("forge_selected_code_repo", codeRepoSelect.value);
+  });
+}
+
+if (robotRepoSearch) {
+  robotRepoSearch.addEventListener("input", () => {
+    renderRobotRepoSelector();
+    renderRepoSuggestions(robotRepoSearch, robotRepoSuggestions, robotRepoSelect);
+  });
+  robotRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(robotRepoSearch, robotRepoSuggestions, robotRepoSelect);
+  });
+  robotRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => robotRepoSuggestions?.classList.add("hidden"), 120);
+  });
+}
+
+if (artifactRepoSearch) {
+  artifactRepoSearch.addEventListener("input", () => {
+    renderArtifactRepoSelector();
+    renderRepoSuggestions(artifactRepoSearch, artifactRepoSuggestions, artifactRepoSelect);
+  });
+  artifactRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(artifactRepoSearch, artifactRepoSuggestions, artifactRepoSelect);
+  });
+  artifactRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => artifactRepoSuggestions?.classList.add("hidden"), 120);
+  });
+}
+
+if (codeRepoSearch) {
+  codeRepoSearch.addEventListener("input", () => {
+    renderCodeRepoSelector();
+    renderRepoSuggestions(codeRepoSearch, codeRepoSuggestions, codeRepoSelect);
+  });
+  codeRepoSearch.addEventListener("focus", () => {
+    renderRepoSuggestions(codeRepoSearch, codeRepoSuggestions, codeRepoSelect);
+  });
+  codeRepoSearch.addEventListener("blur", () => {
+    setTimeout(() => codeRepoSuggestions?.classList.add("hidden"), 120);
+  });
+}
+
+if (codeLayout) {
+  const savedWidth = Number(localStorage.getItem("forge_code_files_width") || "320");
+  setCodePaneWidth(savedWidth);
+}
+
+if (isCodeOnlyWorkspace && codeEditorWrap) {
+  const savedTerminalHeight = Number(localStorage.getItem("forge_code_terminal_height") || "260");
+  setTerminalPanelHeight(savedTerminalHeight);
+  window.addEventListener("resize", () => {
+    if (monacoEditor) {
+      monacoEditor.layout();
+    }
+  });
+}
+
+if (codeResizer) {
+  codeResizer.addEventListener("mousedown", (event) => {
+    if (!codeLayout) return;
+    event.preventDefault();
+    codeResizer.classList.add("dragging");
+
+    const onMove = (moveEvent) => {
+      const layoutRect = codeLayout.getBoundingClientRect();
+      const targetWidth = moveEvent.clientX - layoutRect.left;
+      setCodePaneWidth(targetWidth);
+    };
+
+    const onUp = () => {
+      codeResizer.classList.remove("dragging");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+}
+
+if (isCodeOnlyWorkspace && terminalResizer) {
+  terminalResizer.addEventListener("mousedown", (event) => {
+    if (!codeEditorWrap) return;
+    event.preventDefault();
+    terminalResizer.classList.add("dragging");
+    const startY = event.clientY;
+    const startHeight = terminalMount?.getBoundingClientRect().height || 260;
+
+    const onMove = (moveEvent) => {
+      const delta = startY - moveEvent.clientY;
+      setTerminalPanelHeight(startHeight + delta);
+    };
+
+    const onUp = () => {
+      terminalResizer.classList.remove("dragging");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   });
 }
 
@@ -966,35 +1489,69 @@ if (visualizerRepoSearch) {
   });
 }
 
-if (elements.loginForm) {
-  elements.loginForm.addEventListener("submit", async (event) => {
+if (artifactGenerateForm) {
+  artifactGenerateForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const email = String(byId("email")?.value || "").trim();
-    const password = String(byId("password")?.value || "");
+    const repoFullName = artifactRepoSelect?.value || "";
+    if (!repoFullName) {
+      setStatus("Select a repository for artifact generation.", true);
+      return;
+    }
+
     try {
-      setStatus("Signing in...");
-      currentSession = await apiJson("/api/auth/login", {
+      setStatus("Generating integration diagram...");
+      const data = await apiJson("/api/artifacts/generate", {
         method: "POST",
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ repoFullName })
       });
-      closeSignInModal();
-      renderSession();
-      await Promise.allSettled([teamController.refresh(), currentSession.githubConnected ? refreshRepos() : Promise.resolve()]);
-      await Promise.allSettled([codeController.loadStoredSource(), robotController.loadWorkspace()]);
-      setStatus("Signed in");
-    } catch (error) {
-      setStatus(error.message, true);
+      generatedArtifact = data.artifact || null;
+
+      if (artifactTitle) artifactTitle.textContent = generatedArtifact?.title || "Generated artifact";
+      if (artifactDescription) {
+        artifactDescription.textContent =
+          generatedArtifact?.description || "Integration diagram generated.";
+      }
+      if (artifactMermaid) {
+        await renderArtifactDiagram(generatedArtifact?.mermaid || "");
+      }
+      if (artifactStatus) {
+        artifactStatus.textContent = `Generated at ${new Date(
+          generatedArtifact.generatedAt
+        ).toLocaleTimeString()}`;
+      }
+      setStatus("Artifact generated");
+    } catch (err) {
+      setStatus(err.message, true);
     }
   });
 }
 
-if (elements.githubConnectButton) {
-  elements.githubConnectButton.addEventListener("click", () => {
-    if (!currentSession.user) {
-      openSignInModal();
+if (artifactSaveButton) {
+  artifactSaveButton.addEventListener("click", async () => {
+    if (!generatedArtifact) {
+      setStatus("Generate an artifact first.", true);
       return;
     }
-    window.location.assign("/api/auth/github/connect");
+
+    try {
+      setStatus("Saving artifact to team workspace...");
+      await apiJson("/api/team/artifacts", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "plan",
+          title: generatedArtifact.title,
+          summary: generatedArtifact.description,
+          payload: generatedArtifact
+        })
+      });
+      await refreshTeamState();
+      if (artifactStatus) {
+        artifactStatus.textContent = "Saved to Team Artifacts.";
+      }
+      setStatus("Artifact saved");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
   });
 }
 
@@ -1013,7 +1570,24 @@ if (codeLoadForm) {
         `/api/code/tree/by-repo?repoFullName=${encodeURIComponent(repoFullName)}`,
         { method: "GET" }
       );
-      await loadCodeTreeByPath(data.repoPath);
+      if (data.source === "github") {
+        currentCodeSource = "github";
+        currentCodeRepoFullName = data.repoFullName;
+        currentCodeRef = data.ref || "";
+        currentCodeRepoPath = "";
+        currentCodeFilePath = "";
+        renderCodeFiles(data.files || []);
+        const ok = await ensureMonacoLoaded();
+        if (ok && monacoEditor) {
+          monacoEditor.updateOptions({ readOnly: true });
+          monacoEditor.setValue("// GitHub read-only mode. Select a file from the list.");
+        }
+        if (codeEditorMeta) {
+          codeEditorMeta.textContent = `${data.repoFullName} @ ${data.ref} • read-only (GitHub)`;
+        }
+      } else {
+        await loadCodeTreeByPath(data.repoPath);
+      }
       setStatus("Repository loaded");
     } catch (err) {
       setStatus(err.message, true);
@@ -1046,74 +1620,213 @@ if (codeOpenFolderButton) {
   });
 }
 
-if (visualizerLoadForm) {
-  visualizerLoadForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const first_name = String(elements.settingsFirstNameInput?.value || "").trim();
-    if (!first_name) return;
+if (codeOpenVsCodeButton) {
+  codeOpenVsCodeButton.addEventListener("click", async () => {
+    if (currentCodeSource === "github") {
+      setStatus("GitHub mode is read-only. Use Open Folder for a local editable workspace.", true);
+      return;
+    }
+    if (!currentCodeRepoPath) {
+      setStatus("Load a local repository or folder first.", true);
+      return;
+    }
+    if (!window.forgeAPI?.openInVSCode) {
+      setStatus("Open in VSCode is only available in desktop mode.", true);
+      return;
+    }
     try {
-      setStatus("Saving profile...");
-      const data = await apiJson("/api/account/profile", {
-        method: "POST",
-        body: JSON.stringify({ first_name })
-      });
-      currentSession.user = data.user;
-      renderSession();
-      setStatus("Profile updated");
-    } catch (error) {
-      setStatus(error.message, true);
+      const result = await window.forgeAPI.openInVSCode(currentCodeRepoPath);
+      if (!result?.ok) {
+        throw new Error(result?.error || "Could not open VSCode.");
+      }
+      setStatus("Opened in VSCode");
+    } catch (err) {
+      setStatus(err.message, true);
     }
   });
 }
 
-if (elements.settingsPasswordForm) {
-  elements.settingsPasswordForm.addEventListener("submit", async (event) => {
+if (codeOpenNewWindowButton) {
+  codeOpenNewWindowButton.addEventListener("click", async () => {
+    if (!currentCodeRepoPath && !currentCodeRepoFullName) {
+      setStatus("Load a repository or folder first.", true);
+      return;
+    }
+    if (!window.forgeAPI?.openCodeWindow) {
+      setStatus("Open in New Window is only available in desktop mode.", true);
+      return;
+    }
+    try {
+      const result = await window.forgeAPI.openCodeWindow({
+        repoPath: currentCodeRepoPath,
+        repoFullName: currentCodeRepoFullName,
+        ref: currentCodeRef,
+        source: currentCodeSource,
+        filePath: currentCodeFilePath
+      });
+      if (!result?.ok) {
+        throw new Error(result?.error || "Could not open code window.");
+      }
+      setStatus("Opened code in new window");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (terminalClearButton) {
+  terminalClearButton.addEventListener("click", () => {
+    if (terminalInstance) {
+      terminalInstance.clear();
+    }
+  });
+}
+
+if (terminalRestartButton) {
+  terminalRestartButton.addEventListener("click", async () => {
+    if (!window.forgeAPI?.stopTerminal) return;
+    await window.forgeAPI.stopTerminal();
+    terminalStarted = false;
+    await startWorkspaceTerminal(currentCodeRepoPath || "");
+  });
+}
+
+if (visualizerLoadForm) {
+  visualizerLoadForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const password = String(elements.settingsPasswordInput?.value || "");
+    const repoFullName = visualizerRepoSelect?.value || "";
+    if (!repoFullName) {
+      setStatus("Select a repository for visualization.", true);
+      return;
+    }
+
+    try {
+      setStatus("Building repository graph...");
+      const data = await apiJson(
+        `/api/visualizer/graph/by-repo?repoFullName=${encodeURIComponent(
+          repoFullName
+        )}&includeSummaries=1`,
+        { method: "GET" }
+      );
+      await renderRepositoryGraph(data);
+      if (visualizerStats) {
+        visualizerStats.textContent = `${repoFullName} • ${data.stats?.totalFiles ?? 0} files • ${
+          data.stats?.totalEdges ?? 0
+        } edges • summaries: ${data.stats?.summaryModel || "unavailable"}`;
+      }
+      setStatus("Repository graph loaded");
+    } catch (err) {
+      setStatus(err.message, true);
+      if (visualizerStats) {
+        visualizerStats.textContent = "Unable to build graph for selected repository.";
+      }
+    }
+  });
+}
+
+if (visualizerOpenFolderButton) {
+  visualizerOpenFolderButton.addEventListener("click", async () => {
+    if (!window.forgeAPI?.openFolder) {
+      setStatus("Open Folder is only available in desktop mode.", true);
+      return;
+    }
+
+    try {
+      const result = await window.forgeAPI.openFolder();
+      if (!result || result.canceled || !result.path) {
+        return;
+      }
+
+      setStatus("Building graph from selected folder...");
+      const data = await apiJson(
+        `/api/visualizer/graph?repoPath=${encodeURIComponent(result.path)}&includeSummaries=1`,
+        { method: "GET" }
+      );
+      currentVisualizerRepoPath = data.repoPath || result.path;
+      await renderRepositoryGraph(data);
+      if (visualizerStats) {
+        visualizerStats.textContent = `${currentVisualizerRepoPath} • ${
+          data.stats?.totalFiles ?? 0
+        } files • ${data.stats?.totalEdges ?? 0} edges • summaries: ${
+          data.stats?.summaryModel || "unavailable"
+        }`;
+      }
+      setStatus("Repository graph loaded");
+    } catch (err) {
+      setStatus(err.message, true);
+      if (visualizerStats) {
+        visualizerStats.textContent = "Unable to build graph for selected folder.";
+      }
+    }
+  });
+}
+
+if (settingsProfileForm) {
+  settingsProfileForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const firstName = settingsFirstNameInput.value.trim();
+    if (!firstName) return;
+
+    try {
+      setStatus("Saving profile...");
+      await apiJson("/api/account/profile", {
+        method: "POST",
+        body: JSON.stringify({ first_name: firstName })
+      });
+      await refreshSession();
+      setStatus("Profile updated");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (settingsPasswordForm) {
+  settingsPasswordForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const password = settingsPasswordInput.value;
+    if (!password) return;
+
     try {
       setStatus("Updating password...");
       await apiJson("/api/account/password", {
         method: "POST",
         body: JSON.stringify({ password })
       });
-      elements.settingsPasswordForm.reset();
+      settingsPasswordForm.reset();
       setStatus("Password updated");
-    } catch (error) {
-      setStatus(error.message, true);
+    } catch (err) {
+      setStatus(err.message, true);
     }
   });
 }
 
-if (elements.settingsGithubDisconnectButton) {
-  elements.settingsGithubDisconnectButton.addEventListener("click", async () => {
+if (settingsGithubDisconnectButton) {
+  settingsGithubDisconnectButton.addEventListener("click", async () => {
     try {
       setStatus("Disconnecting GitHub...");
       await apiJson("/api/account/github/disconnect", { method: "POST" });
-      currentSession.githubConnected = false;
-      renderSession();
-      pushRepos([]);
+      await refreshSession();
       setStatus("GitHub disconnected");
-    } catch (error) {
-      setStatus(error.message, true);
+    } catch (err) {
+      setStatus(err.message, true);
     }
   });
 }
 
-if (elements.settingsDeleteAccountButton) {
-  elements.settingsDeleteAccountButton.addEventListener("click", async () => {
-    if (!window.confirm("Delete this account permanently?")) return;
+if (settingsDeleteAccountButton) {
+  settingsDeleteAccountButton.addEventListener("click", async () => {
+    const confirmed = window.confirm("Delete your account permanently?");
+    if (!confirmed) return;
+
     try {
       setStatus("Deleting account...");
       await apiJson("/api/account/delete", { method: "POST" });
-      currentSession = { user: null, githubConnected: false };
-      renderSession();
-      pushRepos([]);
-      await teamController.refresh();
-      codeController.reset();
-      await robotController.loadWorkspace().catch(() => {});
+      renderRepos([]);
+      await refreshSession();
       setStatus("Account deleted");
-    } catch (error) {
-      setStatus(error.message, true);
+    } catch (err) {
+      setStatus(err.message, true);
     }
   });
 }
@@ -1255,14 +1968,93 @@ window.forgeAPI
     meta.textContent = "Unable to load app metadata";
   });
 
-setActiveView("workspace");
+setActiveView(isCodeOnlyWorkspace ? "code" : "workspace");
+if (isCodeOnlyWorkspace) {
+  document.body.classList.add("code-only-workspace");
+  title.textContent = "Code Workspace";
+  if (codeTerminal) {
+    codeTerminal.classList.add("active");
+  }
+  initCodeOnlyTerminal().catch(() => {});
+  if (window.forgeAPI?.onTerminalData && window.forgeAPI?.onTerminalExit) {
+    terminalUnsubscribeData = window.forgeAPI.onTerminalData((payload) => {
+      appendTerminalOutput(payload?.data || "");
+    });
+    terminalUnsubscribeExit = window.forgeAPI.onTerminalExit((payload) => {
+      terminalStarted = false;
+      appendTerminalOutput(`\r\n[terminal exited] code=${payload?.code ?? "unknown"}\r\n`);
+    });
+  }
+  startWorkspaceTerminal(currentCodeRepoPath || "").catch(() => {});
+  requestAnimationFrame(() => {
+    if (monacoEditor) {
+      monacoEditor.layout();
+    }
+  });
+}
 if (artifactMermaid?.textContent) {
   renderArtifactDiagram(artifactMermaid.textContent);
 }
 
-refreshSession().catch(() => {
-  setStatus("Unable to load session", true);
-});
+refreshSession()
+  .then(async () => {
+    const initialView = urlParams.get("view");
+    const initialRepoPath = urlParams.get("repoPath");
+    const initialRepoFullName = urlParams.get("repoFullName");
+    const initialRef = urlParams.get("ref");
+    const initialSource = urlParams.get("source");
+    const initialFilePath = urlParams.get("filePath");
+
+    if (!isCodeOnlyWorkspace && initialView && labels[initialView]) {
+      setActiveView(initialView);
+    }
+
+    if (initialRepoPath) {
+      try {
+        await loadCodeTreeByPath(initialRepoPath);
+        setActiveView("code");
+        if (initialFilePath) {
+          await loadCodeFile(initialFilePath);
+        }
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    } else if (initialRepoFullName && initialSource === "github") {
+      try {
+        const data = await apiJson(
+          `/api/code/tree/by-repo?repoFullName=${encodeURIComponent(
+            initialRepoFullName
+          )}&ref=${encodeURIComponent(initialRef || "")}`,
+          { method: "GET" }
+        );
+        if (data.source === "github") {
+          currentCodeSource = "github";
+          currentCodeRepoFullName = data.repoFullName;
+          currentCodeRef = data.ref || "";
+          currentCodeRepoPath = "";
+          currentCodeFilePath = "";
+          renderCodeFiles(data.files || []);
+          const ok = await ensureMonacoLoaded();
+          if (ok && monacoEditor) {
+            monacoEditor.updateOptions({ readOnly: true });
+            monacoEditor.setValue("// GitHub read-only mode. Select a file from the list.");
+          }
+          if (codeEditorMeta) {
+            codeEditorMeta.textContent = `${data.repoFullName} @ ${data.ref} • read-only (GitHub)`;
+          }
+          setActiveView("code");
+          if (initialFilePath) {
+            await loadCodeFile(initialFilePath);
+          }
+        }
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    }
+  })
+  .catch(() => {
+    setStatus("Unable to load session", true);
+  });
 
 document.addEventListener("click", (event) => {
   const target = event.target;
@@ -1288,7 +2080,69 @@ document.addEventListener("click", (event) => {
       });
   }
 
-  if (target instanceof HTMLElement && target.dataset.codeFile) {
-    loadCodeFile(target.dataset.codeFile);
+  if (target instanceof HTMLElement) {
+    const toggleButton = target.closest("[data-tree-toggle]");
+    if (toggleButton instanceof HTMLElement && toggleButton.dataset.treeToggle) {
+      const dirPath = toggleButton.dataset.treeToggle;
+      if (expandedCodeDirs.has(dirPath)) {
+        expandedCodeDirs.delete(dirPath);
+      } else {
+        expandedCodeDirs.add(dirPath);
+      }
+      renderCodeFiles(currentCodeFiles, { preserveExpansion: true });
+      return;
+    }
+  }
+
+  if (target instanceof HTMLElement) {
+    const fileButton = target.closest("[data-code-file]");
+    if (fileButton instanceof HTMLElement && fileButton.dataset.codeFile) {
+      loadCodeFile(fileButton.dataset.codeFile);
+    }
+  }
+
+  if (target instanceof HTMLElement && target.dataset.taskDelete) {
+    const taskId = target.dataset.taskDelete;
+    apiJson(`/api/team/tasks/${taskId}`, { method: "DELETE" })
+      .then(async () => {
+        await refreshTeamState();
+        setStatus("Task removed");
+      })
+      .catch((err) => {
+        setStatus(err.message, true);
+      });
+  }
+});
+
+document.addEventListener("change", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.dataset.taskToggle) {
+    const taskId = target.dataset.taskToggle;
+    const status = target.checked ? "completed" : "open";
+    apiJson(`/api/team/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    })
+      .then(async () => {
+        await refreshTeamState();
+        setStatus(status === "completed" ? "Task completed" : "Task reopened");
+      })
+      .catch((err) => {
+        setStatus(err.message, true);
+      });
+  }
+});
+
+window.addEventListener("beforeunload", () => {
+  if (terminalUnsubscribeData) {
+    terminalUnsubscribeData();
+    terminalUnsubscribeData = null;
+  }
+  if (terminalUnsubscribeExit) {
+    terminalUnsubscribeExit();
+    terminalUnsubscribeExit = null;
+  }
+  if (window.forgeAPI?.stopTerminal) {
+    window.forgeAPI.stopTerminal().catch(() => {});
   }
 });
