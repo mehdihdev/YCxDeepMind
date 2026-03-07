@@ -1,0 +1,15 @@
+# Forge RDE ELEGOO Car - Python Dependencies
+# Install with: pip3 install -r requirements.txt
+
+# WebSocket server
+websockets>=12.0
+
+# Serial communication with Arduino
+pyserial>=3.5
+
+# Optional: Camera streaming
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Optional: If using Jetson GPIO
+# Jetson.GPIO>=2.0.0

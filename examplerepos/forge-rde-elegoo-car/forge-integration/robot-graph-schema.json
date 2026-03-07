@@ -1,0 +1,118 @@
+{
+  "$schema": "https://forge-rde.dev/schemas/robot-graph-v1.json",
+  "robot": {
+    "id": "elegoo-smart-car-v4",
+    "name": "ELEGOO Smart Robot Car V4.0",
+    "type": "mobile_robot",
+    "subtype": "differential_drive",
+    "version": "1.0.0"
+  },
+  "components": {
+    "chassis": {
+      "type": "chassis",
+      "name": "Main Chassis",
+      "dimensions": {
+        "length_mm": 231,
+        "width_mm": 133,
+        "height_mm": 65
+      },
+      "material": "acrylic"
+    },
+    "wheels": {
+      "type": "wheel_array",
+      "count": 4,
+      "diameter_mm": 65,
+      "width_mm": 26,
+      "configuration": "skid_steer"
+    },
+    "motors": {
+      "type": "motor_array",
+      "count": 4,
+      "model": "TT Motor",
+      "driver": "L298N",
+      "voltage": 6,
+      "control": "pwm"
+    },
+    "controller": {
+      "type": "microcontroller",
+      "model": "Arduino UNO R3",
+      "processor": "ATmega328P",
+      "clock_mhz": 16
+    },
+    "sensors": {
+      "ultrasonic": {
+        "type": "distance_sensor",
+        "model": "HC-SR04",
+        "range_cm": [2, 400],
+        "mounted_on": "servo_pan"
+      },
+      "ir_line": {
+        "type": "line_sensor_array",
+        "model": "TCRT5000",
+        "count": 3,
+        "positions": ["left", "center", "right"]
+      },
+      "ir_obstacle": {
+        "type": "obstacle_sensor_array",
+        "model": "IR_OBSTACLE",
+        "count": 2,
+        "positions": ["left", "right"]
+      }
+    },
+    "servos": {
+      "ultrasonic_pan": {
+        "type": "servo",
+        "model": "SG90",
+        "range_deg": [0, 180],
+        "purpose": "ultrasonic_sensor_pan"
+      }
+    },
+    "cameras": {
+      "fpv": {
+        "type": "camera",
+        "model": "ESP32-CAM",
+        "resolution": [640, 480],
+        "optional": true
+      }
+    }
+  },
+  "interfaces": {
+    "websocket": {
+      "car_control": {
+        "port": 8765,
+        "protocol": "json",
+        "commands": [
+          "set_velocity",
+          "drive",
+          "stop",
+          "set_servo",
+          "scan",
+          "get_state"
+        ]
+      },
+      "camera_stream": {
+        "port": 8766,
+        "protocol": "mjpeg"
+      }
+    },
+    "serial": {
+      "arduino": {
+        "baudrate": 115200,
+        "protocol": "text_commands"
+      }
+    }
+  },
+  "capabilities": {
+    "locomotion": ["forward", "backward", "turn_left", "turn_right", "spin"],
+    "sensing": ["distance", "line_following", "obstacle_detection"],
+    "control_modes": ["manual", "autonomous", "recording", "playback"],
+    "recording": {
+      "format": "lerobot-v2",
+      "includes": ["motor_commands", "sensor_readings", "timestamps"]
+    }
+  },
+  "mujoco": {
+    "model_file": "mujoco/elegoo_car.xml",
+    "scene_file": "mujoco/elegoo_car_scene.xml"
+  }
+}
