@@ -4,6 +4,11 @@ export const ROBOT_COMPONENTS = {
     label: "Arm",
     colorToken: "component-arm"
   },
+  car: {
+    id: "car",
+    label: "Car",
+    colorToken: "component-base"
+  },
   base: {
     id: "base",
     label: "Base",

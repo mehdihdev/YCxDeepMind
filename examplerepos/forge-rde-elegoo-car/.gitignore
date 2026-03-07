@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# Recordings
+recording_*.json
+
+# Discovered devices
+discovered_devices.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.o
+*.elf
+*.hex
+
+# Large files
+*.zip
+*.pdf
+docs/*.pdf

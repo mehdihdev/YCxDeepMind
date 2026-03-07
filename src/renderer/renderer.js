@@ -84,6 +84,31 @@ const visualizerOpenFolderButton = document.getElementById("visualizer-open-fold
 const visualizerStats = document.getElementById("visualizer-stats");
 const visualizerGraphMount = document.getElementById("visualizer-graph");
 
+// Robot page elements
+const robotOpenFolderButton = document.getElementById("robot-open-folder-button");
+const robotRefreshButton = document.getElementById("robot-refresh-button");
+const robotSourceBadge = document.getElementById("robot-source-badge");
+const robotSummaryGrid = document.getElementById("robot-summary-grid");
+const robotMissionBoard = document.getElementById("robot-mission-board");
+const robotRequirementForm = document.getElementById("robot-requirement-form");
+const robotRequirementTitleInput = document.getElementById("robot-requirement-title");
+const robotRequirementDescriptionInput = document.getElementById("robot-requirement-description");
+const robotRequirementList = document.getElementById("robot-requirement-list");
+const robotOptionList = document.getElementById("robot-option-list");
+const robotVerifierRuns = document.getElementById("robot-verifier-runs");
+const robotTaskSuggestions = document.getElementById("robot-task-suggestions");
+const robotNodeDetail = document.getElementById("robot-node-detail");
+const robotGraphMount = document.getElementById("robot-graph");
+const robotGraphMeta = document.getElementById("robot-graph-meta");
+const robotGraphRevision = document.getElementById("robot-graph-revision");
+const robotObjectiveInput = document.getElementById("robot-objective");
+const robotObservationsInput = document.getElementById("robot-observations");
+const robotDiscoveredComponents = document.getElementById("robot-discovered-components");
+const robotGeneratedFiles = document.getElementById("robot-generated-files");
+
+const analyzeForm = document.getElementById("analyze-form");
+const repoPathInput = document.getElementById("repo-path");
+const analysisOutput = document.getElementById("analysis-output");
 const teamModal = document.getElementById("team-modal");
 
 const labels = {
@@ -2159,3 +2184,338 @@ window.addEventListener("beforeunload", () => {
   }
   terminalEchoLocalInput = false;
 });
+
+// Robot page initialization - restore state from localStorage
+(function initRobotPage() {
+  const savedFolder = localStorage.getItem("forge_selected_robot_folder") || "";
+  const savedRepo = localStorage.getItem("forge_selected_robot_repo") || "";
+  const sourceMode = localStorage.getItem("forge_robot_source_mode") || "";
+
+  // Update source badge on load
+  if (robotSourceBadge) {
+    if (sourceMode === "folder" && savedFolder) {
+      robotSourceBadge.textContent = "Source: folder";
+    } else if (savedRepo) {
+      robotSourceBadge.textContent = "Source: repo";
+    } else {
+      robotSourceBadge.textContent = "Source: none";
+    }
+  }
+
+  // Update meta text on load
+  if (robotRepoMeta) {
+    if (sourceMode === "folder" && savedFolder) {
+      robotRepoMeta.textContent = `${savedFolder} • local folder source`;
+    } else if (savedRepo) {
+      robotRepoMeta.textContent = `${savedRepo} • GitHub repo source`;
+    }
+  }
+})();
+
+// Robot page event handlers (inline version)
+if (robotRefreshButton) {
+  robotRefreshButton.addEventListener("click", async () => {
+    const repoFullName = robotRepoSelect?.value || localStorage.getItem("forge_selected_robot_repo") || "";
+    const folderPath = localStorage.getItem("forge_selected_robot_folder") || "";
+
+    if (!repoFullName && !folderPath) {
+      setStatus("Select a repo or folder first", true);
+      return;
+    }
+
+    try {
+      setStatus("Syncing robot workspace...");
+      const payload = repoFullName ? { repoFullName } : { sourcePath: folderPath };
+      const data = await apiJson("/api/robot/workspace/sync", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      const nodeCount = data.workspace?.graph?.nodes?.length || 0;
+      setStatus(`Robot workspace synced - ${nodeCount} components`);
+
+      // Update source badge
+      if (robotSourceBadge) {
+        robotSourceBadge.textContent = repoFullName ? "Source: repo" : "Source: folder";
+      }
+
+      // Update graph meta
+      if (robotGraphMeta) {
+        robotGraphMeta.textContent = `${repoFullName || folderPath} • ${nodeCount} nodes`;
+      }
+
+      // Render the robot graph
+      await renderRobotGraph(data.workspace);
+
+      // Render requirements list
+      renderRequirementList(data.workspace?.requirements);
+
+      // Update discovered components panel
+      if (robotDiscoveredComponents && data.workspace?.graph?.nodes) {
+        const nodes = data.workspace.graph.nodes;
+        const hasJetson = nodes.some(n => (n.label || "").toLowerCase().includes("jetson") || (n.componentLabel || "").toLowerCase().includes("compute"));
+        const hasArm = nodes.some(n => (n.label || "").toLowerCase().includes("arm") || (n.componentLabel || "").toLowerCase().includes("arm"));
+        const hasCamera = nodes.some(n => (n.label || "").toLowerCase().includes("camera"));
+
+        if (hasJetson || hasArm || hasCamera) {
+          const items = [];
+          if (hasJetson) items.push("<li>Compute/Jetson detected</li>");
+          if (hasArm) items.push("<li>Robot arm detected</li>");
+          if (hasCamera) items.push("<li>Camera detected</li>");
+          robotDiscoveredComponents.innerHTML = `<ul class="robot-check-list">${items.join("")}</ul>`;
+        } else {
+          robotDiscoveredComponents.innerHTML = `<p class="muted">${nodeCount} nodes found. No robot hardware detected yet.</p>`;
+        }
+
+        // Update Live Bench visibility
+        updateBenchVisibility(hasArm || hasJetson, { armType: "so100" });
+      }
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+// Helper function to render robot graph
+async function renderRobotGraph(workspace) {
+  if (!robotGraphMount) return;
+
+  const nodes = workspace?.graph?.nodes || [];
+  const edges = workspace?.graph?.edges || [];
+
+  if (!nodes.length) {
+    robotGraphMount.innerHTML = `
+      <div class="robot-graph-empty">
+        <h3>Empty Robot Graph</h3>
+        <p>Select a repo or folder, then sync the workspace to infer robot components.</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Load vis-network if needed
+  if (!window.vis?.Network) {
+    try {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://unpkg.com/vis-network/standalone/umd/vis-network.min.js";
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    } catch {
+      robotGraphMount.innerHTML = '<div class="robot-graph-empty"><p>Could not load graph renderer.</p></div>';
+      return;
+    }
+  }
+
+  robotGraphMount.innerHTML = "";
+
+  const COMPONENT_COLORS = {
+    "component-arm": { background: "#0f766e", border: "#2dd4bf", text: "#ecfeff" },
+    "component-base": { background: "#92400e", border: "#f59e0b", text: "#fff7ed" },
+    "component-camera": { background: "#1d4ed8", border: "#60a5fa", text: "#eff6ff" },
+    "component-compute": { background: "#14532d", border: "#4ade80", text: "#f0fdf4" },
+    "component-unknown": { background: "#1e293b", border: "#64748b", text: "#e2e8f0" }
+  };
+
+  const getColor = (token) => COMPONENT_COLORS[token] || COMPONENT_COLORS["component-unknown"];
+
+  const visNodes = nodes.map((node) => {
+    const color = getColor(node.componentColorToken);
+    return {
+      id: node.id,
+      label: node.label || node.id,
+      title: node.description || node.label,
+      shape: "box",
+      margin: 12,
+      font: { color: color.text, size: 14 },
+      color: { background: color.background, border: color.border }
+    };
+  });
+
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const visEdges = edges
+    .filter(e => nodeIds.has(e.from) && nodeIds.has(e.to))
+    .map((edge) => ({
+      from: edge.from,
+      to: edge.to,
+      label: edge.label || "",
+      color: { color: "#475569" },
+      arrows: { to: { enabled: true, scaleFactor: 0.6 } }
+    }));
+
+  new window.vis.Network(robotGraphMount, { nodes: visNodes, edges: visEdges }, {
+    autoResize: true,
+    interaction: { hover: true, tooltipDelay: 200 },
+    physics: { enabled: true, solver: "forceAtlas2Based" }
+  });
+}
+
+// Helper function to render requirements list
+function renderRequirementList(requirements) {
+  if (!robotRequirementList) return;
+
+  if (!requirements || !requirements.length) {
+    robotRequirementList.innerHTML = '<div class="robot-list-card"><p class="muted">No requirements yet. Add one above or let the planner create them.</p></div>';
+    return;
+  }
+
+  robotRequirementList.innerHTML = requirements.map((req) => {
+    const optionCount = (req.options || []).length;
+    const statusClass = req.status === "resolved" ? "robot-pill-success" :
+                        req.status === "options_ready" ? "robot-pill-warn" : "";
+    const statusLabel = req.status === "resolved" ? "RESOLVED" :
+                        req.status === "options_ready" ? `${optionCount} OPTIONS` : "OPEN";
+
+    return `<article class="robot-list-card" data-requirement-id="${req.id}">
+      <div class="robot-requirement-header">
+        <span class="robot-pill ${statusClass}">${statusLabel}</span>
+      </div>
+      <h4>${req.title || "Untitled"}</h4>
+      <p>${req.description || ""}</p>
+      <div class="actions mt-3">
+        <button type="button" data-discover-requirement="${req.id}">${optionCount ? "Refresh Options" : "Discover Options"}</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+// Helper function to update Live Bench visibility
+function updateBenchVisibility(hasComponents, config = {}) {
+  const benchEmptyState = document.getElementById("bench-empty-state");
+  const benchIframe = document.getElementById("bench-iframe");
+
+  if (benchEmptyState) {
+    benchEmptyState.style.display = hasComponents ? "none" : "flex";
+  }
+
+  if (benchIframe) {
+    if (hasComponents) {
+      const params = new URLSearchParams({
+        armType: config.armType || "so100",
+        joints: "6",
+        ip: config.ip || "",
+        armPort: config.armPort || "8765",
+        cameraPort: config.cameraPort || "8766"
+      });
+      const targetUrl = `/bench/?${params.toString()}`;
+
+      if (benchIframe.src === "about:blank" || !benchIframe.src.includes(params.toString())) {
+        benchIframe.src = targetUrl;
+      }
+      benchIframe.style.display = "block";
+    } else {
+      benchIframe.src = "about:blank";
+      benchIframe.style.display = "none";
+    }
+  }
+}
+
+if (robotOpenFolderButton) {
+  robotOpenFolderButton.addEventListener("click", async () => {
+    if (!window.forgeAPI?.openFolder) {
+      setStatus("Folder selection not available", true);
+      return;
+    }
+
+    const result = await window.forgeAPI.openFolder();
+    if (!result || result.canceled || !result.path) return;
+
+    localStorage.setItem("forge_selected_robot_folder", result.path);
+    localStorage.setItem("forge_robot_source_mode", "folder");
+
+    if (robotRepoMeta) {
+      robotRepoMeta.textContent = `${result.path} • local folder source`;
+    }
+    if (robotSourceBadge) {
+      robotSourceBadge.textContent = "Source: folder";
+    }
+
+    try {
+      setStatus("Syncing robot workspace from folder...");
+      const data = await apiJson("/api/robot/workspace/sync", {
+        method: "POST",
+        body: JSON.stringify({ sourcePath: result.path })
+      });
+      const nodeCount = data.workspace?.graph?.nodes?.length || 0;
+      setStatus(`Robot workspace synced - ${nodeCount} components`);
+
+      // Update graph meta
+      if (robotGraphMeta) {
+        robotGraphMeta.textContent = `${result.path} • ${nodeCount} nodes`;
+      }
+
+      // Render the robot graph
+      await renderRobotGraph(data.workspace);
+
+      // Render requirements list
+      renderRequirementList(data.workspace?.requirements);
+
+      // Update discovered components panel
+      if (robotDiscoveredComponents && data.workspace?.graph?.nodes) {
+        const nodes = data.workspace.graph.nodes;
+        const hasJetson = nodes.some(n => (n.label || "").toLowerCase().includes("jetson") || (n.componentLabel || "").toLowerCase().includes("compute"));
+        const hasArm = nodes.some(n => (n.label || "").toLowerCase().includes("arm") || (n.componentLabel || "").toLowerCase().includes("arm"));
+        const hasCamera = nodes.some(n => (n.label || "").toLowerCase().includes("camera"));
+
+        if (hasJetson || hasArm || hasCamera) {
+          const items = [];
+          if (hasJetson) items.push("<li>Compute/Jetson detected</li>");
+          if (hasArm) items.push("<li>Robot arm detected</li>");
+          if (hasCamera) items.push("<li>Camera detected</li>");
+          robotDiscoveredComponents.innerHTML = `<ul class="robot-check-list">${items.join("")}</ul>`;
+
+          // Update Live Bench visibility
+          updateBenchVisibility(hasArm || hasJetson, { armType: "so100" });
+        }
+      }
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (robotRequirementForm) {
+  robotRequirementForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const titleInput = document.getElementById("robot-requirement-title");
+    const descInput = document.getElementById("robot-requirement-description");
+    const title = titleInput?.value?.trim() || "";
+    const description = descInput?.value?.trim() || "";
+
+    if (!title && !description) {
+      setStatus("Enter a requirement title or description", true);
+      return;
+    }
+
+    const repoFullName = robotRepoSelect?.value || localStorage.getItem("forge_selected_robot_repo") || "";
+    const folderPath = localStorage.getItem("forge_selected_robot_folder") || "";
+
+    if (!repoFullName && !folderPath) {
+      setStatus("Select a repo or folder first", true);
+      return;
+    }
+
+    try {
+      setStatus("Creating requirement...");
+      const payload = repoFullName ? { repoFullName } : { sourcePath: folderPath };
+      const data = await apiJson("/api/robot/requirements", {
+        method: "POST",
+        body: JSON.stringify({
+          ...payload,
+          title: title || description,
+          description,
+          capability: `${title} ${description}`.trim()
+        })
+      });
+      robotRequirementForm.reset();
+      setStatus("Requirement created");
+
+      // Render updated requirements list
+      renderRequirementList(data.workspace?.requirements || [data.requirement].filter(Boolean));
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}

@@ -10,11 +10,26 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Dict, List
 
 import websockets
+
+
+@dataclass
+class RecordedFrame:
+    timestamp: float
+    leader_raw: List[int]
+    follower_raw: List[int]
+
+
+@dataclass
+class Recording:
+    frames: List[RecordedFrame] = field(default_factory=list)
+    start_time: float = 0.0
+    name: str = "recording"
 
 # Optional: dynamixel SDK for real hardware
 try:
@@ -142,6 +157,18 @@ class ArmServer:
         self.teleop_enabled = False
         self.running = False
 
+        # Recording state
+        self.recording = False
+        self.current_recording: Optional[Recording] = None
+        self.saved_recordings: List[Recording] = []
+
+        # Playback state
+        self.playback_enabled = False
+        self.playback_loop = True
+        self.playback_recording: Optional[Recording] = None
+        self.playback_index = 0
+        self.playback_start_time = 0.0
+
     def load_config(self) -> Dict:
         """Load robot.config.json."""
         with open(self.config_path) as f:
@@ -253,6 +280,140 @@ class ArmServer:
                     controller.write_positions(home_positions)
                     logger.info(f"Homing {arm}")
 
+            elif msg_type == "start_recording":
+                # Start recording leader-follower teleop
+                if not self.teleop_enabled:
+                    await websocket.send(json.dumps({
+                        "type": "error",
+                        "message": "Enable teleop first before recording"
+                    }))
+                else:
+                    self.recording = True
+                    self.current_recording = Recording(
+                        frames=[],
+                        start_time=time.time(),
+                        name=data.get("name", f"recording_{int(time.time())}")
+                    )
+                    logger.info(f"Recording started: {self.current_recording.name}")
+                    await self.broadcast({
+                        "type": "recording_status",
+                        "recording": True,
+                        "name": self.current_recording.name
+                    })
+
+            elif msg_type == "stop_recording":
+                # Stop recording and save
+                if self.recording and self.current_recording:
+                    self.recording = False
+                    self.saved_recordings.append(self.current_recording)
+                    frame_count = len(self.current_recording.frames)
+                    duration = time.time() - self.current_recording.start_time
+                    logger.info(f"Recording stopped: {self.current_recording.name} ({frame_count} frames, {duration:.1f}s)")
+
+                    # Save to file
+                    recording_path = self.config_path.parent / f"{self.current_recording.name}.json"
+                    with open(recording_path, "w") as f:
+                        json.dump({
+                            "name": self.current_recording.name,
+                            "frame_count": frame_count,
+                            "duration": duration,
+                            "frames": [
+                                {"t": fr.timestamp, "leader": fr.leader_raw, "follower": fr.follower_raw}
+                                for fr in self.current_recording.frames
+                            ]
+                        }, f)
+                    logger.info(f"Recording saved to {recording_path}")
+
+                    await self.broadcast({
+                        "type": "recording_status",
+                        "recording": False,
+                        "saved": True,
+                        "name": self.current_recording.name,
+                        "frame_count": frame_count,
+                        "duration": duration,
+                        "path": str(recording_path)
+                    })
+                    self.current_recording = None
+
+            elif msg_type == "start_playback":
+                # Start playback of recorded trajectory
+                recording_name = data.get("name")
+                self.playback_loop = data.get("loop", True)
+
+                # Find recording to play
+                recording = None
+                if recording_name:
+                    # Load from file
+                    recording_path = self.config_path.parent / f"{recording_name}.json"
+                    if recording_path.exists():
+                        with open(recording_path) as f:
+                            rec_data = json.load(f)
+                        recording = Recording(
+                            name=rec_data["name"],
+                            start_time=time.time(),
+                            frames=[
+                                RecordedFrame(
+                                    timestamp=fr["t"],
+                                    leader_raw=fr["leader"],
+                                    follower_raw=fr["follower"]
+                                ) for fr in rec_data["frames"]
+                            ]
+                        )
+                elif self.saved_recordings:
+                    # Use most recent recording
+                    recording = self.saved_recordings[-1]
+
+                if recording and recording.frames:
+                    self.playback_recording = recording
+                    self.playback_enabled = True
+                    self.playback_index = 0
+                    self.playback_start_time = time.time()
+                    self.teleop_enabled = False  # Disable teleop during playback
+                    logger.info(f"Playback started: {recording.name} (loop={self.playback_loop})")
+                    await self.broadcast({
+                        "type": "playback_status",
+                        "playing": True,
+                        "loop": self.playback_loop,
+                        "name": recording.name,
+                        "total_frames": len(recording.frames)
+                    })
+                else:
+                    await websocket.send(json.dumps({
+                        "type": "error",
+                        "message": "No recording available for playback"
+                    }))
+
+            elif msg_type == "stop_playback":
+                # Stop playback
+                if self.playback_enabled:
+                    self.playback_enabled = False
+                    logger.info("Playback stopped")
+                    await self.broadcast({
+                        "type": "playback_status",
+                        "playing": False
+                    })
+
+            elif msg_type == "list_recordings":
+                # List available recordings
+                recordings_dir = self.config_path.parent
+                recording_files = list(recordings_dir.glob("recording_*.json"))
+                recordings = []
+                for rf in recording_files:
+                    try:
+                        with open(rf) as f:
+                            rec_data = json.load(f)
+                        recordings.append({
+                            "name": rec_data.get("name", rf.stem),
+                            "frame_count": rec_data.get("frame_count", 0),
+                            "duration": rec_data.get("duration", 0)
+                        })
+                    except:
+                        pass
+                await websocket.send(json.dumps({
+                    "type": "recordings_list",
+                    "recordings": recordings
+                }))
+
         except Exception as e:
             logger.error(f"Message handling error: {e}")
             await websocket.send(json.dumps({"type": "error", "message": str(e)}))
@@ -275,20 +436,76 @@ class ArmServer:
         await asyncio.gather(*[client.send(msg) for client in list(self.clients)], return_exceptions=True)
 
     async def teleop_loop(self):
-        """Main loop for leader-follower teleoperation."""
+        """Main loop for leader-follower teleoperation and playback."""
         while self.running:
-            if self.teleop_enabled and self.leader and self.follower:
+            # Handle playback mode
+            if self.playback_enabled and self.playback_recording and self.follower:
+                frames = self.playback_recording.frames
+                if frames:
+                    # Get current frame based on elapsed time
+                    elapsed = time.time() - self.playback_start_time
+                    first_timestamp = frames[0].timestamp
+                    recording_duration = frames[-1].timestamp - first_timestamp
+
+                    # Calculate which frame to play
+                    if recording_duration > 0:
+                        if self.playback_loop:
+                            # Loop: use modulo to wrap around
+                            playback_time = elapsed % recording_duration
+                        else:
+                            playback_time = min(elapsed, recording_duration)
+
+                        # Find frame closest to playback_time
+                        target_time = first_timestamp + playback_time
+                        frame = min(frames, key=lambda f: abs(f.timestamp - target_time))
+
+                        # Write frame positions to follower
+                        self.follower.write_positions(frame.follower_raw)
+
+                        # Check if non-looping playback is done
+                        if not self.playback_loop and elapsed >= recording_duration:
+                            self.playback_enabled = False
+                            logger.info("Playback completed")
+                            await self.broadcast({
+                                "type": "playback_status",
+                                "playing": False,
+                                "completed": True
+                            })
+
+            # Handle teleop mode (leader controls follower)
+            elif self.teleop_enabled and self.leader and self.follower:
                 # Read leader positions
                 leader_raw = self.leader.read_positions()
                 # Write to follower
                 self.follower.write_positions(leader_raw)
 
+                # Record frame if recording is active
+                if self.recording and self.current_recording:
+                    follower_raw = self.follower.read_positions()
+                    frame = RecordedFrame(
+                        timestamp=time.time(),
+                        leader_raw=leader_raw.copy(),
+                        follower_raw=follower_raw.copy()
+                    )
+                    self.current_recording.frames.append(frame)
+
             # Broadcast state to all clients
-            state = {"type": "state", "teleop_enabled": self.teleop_enabled}
+            state = {
+                "type": "state",
+                "teleop_enabled": self.teleop_enabled,
+                "recording": self.recording,
+                "playback": self.playback_enabled
+            }
             if self.leader:
                 state["leader"] = self.leader.get_state()
             if self.follower:
                 state["follower"] = self.follower.get_state()
+            if self.recording and self.current_recording:
+                state["recording_frames"] = len(self.current_recording.frames)
+                state["recording_name"] = self.current_recording.name
+            if self.playback_enabled and self.playback_recording:
+                state["playback_name"] = self.playback_recording.name
+                state["playback_loop"] = self.playback_loop
             await self.broadcast(state)
 
             await asyncio.sleep(0.02)  # 50Hz update rate

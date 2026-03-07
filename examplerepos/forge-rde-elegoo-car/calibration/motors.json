@@ -1,0 +1,55 @@
+{
+  "robot": "elegoo_smart_car_v4",
+  "calibrated_at": "2024-01-01T00:00:00Z",
+  "motors": {
+    "front_left": {
+      "id": "fl",
+      "min_pwm": 50,
+      "max_pwm": 255,
+      "direction": 1,
+      "speed_factor": 1.0,
+      "notes": "Left front motor calibration"
+    },
+    "front_right": {
+      "id": "fr",
+      "min_pwm": 50,
+      "max_pwm": 255,
+      "direction": 1,
+      "speed_factor": 1.0,
+      "notes": "Right front motor calibration"
+    },
+    "rear_left": {
+      "id": "bl",
+      "min_pwm": 50,
+      "max_pwm": 255,
+      "direction": 1,
+      "speed_factor": 1.0,
+      "notes": "Left rear motor (same as front on ELEGOO)"
+    },
+    "rear_right": {
+      "id": "br",
+      "min_pwm": 50,
+      "max_pwm": 255,
+      "direction": 1,
+      "speed_factor": 1.0,
+      "notes": "Right rear motor (same as front on ELEGOO)"
+    }
+  },
+  "servo": {
+    "ultrasonic_pan": {
+      "min_angle": 0,
+      "max_angle": 180,
+      "center_angle": 90,
+      "offset": 0,
+      "notes": "SG90 servo for ultrasonic sensor"
+    }
+  },
+  "sensors": {
+    "ir_line": {
+      "left_threshold": 500,
+      "center_threshold": 500,
+      "right_threshold": 500,
+      "notes": "Values above threshold = line detected"
+    }
+  }
+}

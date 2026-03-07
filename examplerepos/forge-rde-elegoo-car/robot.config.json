@@ -1,0 +1,140 @@
+{
+  "robot": {
+    "name": "ELEGOO Smart Robot Car V4.0",
+    "type": "differential_drive",
+    "description": "4-wheel differential drive robot car with ultrasonic and IR sensors"
+  },
+
+  "controller": {
+    "type": "arduino_uno",
+    "board": "Arduino UNO R3",
+    "port": "/dev/ttyUSB0",
+    "baudrate": 115200
+  },
+
+  "jetson": {
+    "ip": "192.168.1.100",
+    "ssh_user": "jetson",
+    "ssh_key": "~/.ssh/id_rsa",
+    "workspace": "~/forge-elegoo-car"
+  },
+
+  "motors": {
+    "driver": "L298N",
+    "wheels": {
+      "front_left": {
+        "enable_pin": 5,
+        "in1_pin": 7,
+        "in2_pin": 8,
+        "encoder": false
+      },
+      "front_right": {
+        "enable_pin": 6,
+        "in1_pin": 9,
+        "in2_pin": 10,
+        "encoder": false
+      },
+      "rear_left": {
+        "enable_pin": 5,
+        "in1_pin": 7,
+        "in2_pin": 8,
+        "encoder": false
+      },
+      "rear_right": {
+        "enable_pin": 6,
+        "in1_pin": 9,
+        "in2_pin": 10,
+        "encoder": false
+      }
+    },
+    "max_speed": 255,
+    "min_speed": 50
+  },
+
+  "servos": {
+    "ultrasonic_pan": {
+      "pin": 3,
+      "min_angle": 0,
+      "max_angle": 180,
+      "default_angle": 90,
+      "model": "SG90"
+    }
+  },
+
+  "sensors": {
+    "ultrasonic": {
+      "type": "HC-SR04",
+      "trigger_pin": 12,
+      "echo_pin": 13,
+      "max_distance_cm": 400
+    },
+    "ir_line": {
+      "type": "TCRT5000",
+      "pins": {
+        "left": "A0",
+        "center": "A1",
+        "right": "A2"
+      },
+      "threshold": 500
+    },
+    "ir_obstacle": {
+      "type": "IR_OBSTACLE",
+      "pins": {
+        "left": 2,
+        "right": 4
+      }
+    }
+  },
+
+  "cameras": [
+    {
+      "id": "fpv",
+      "name": "ESP32-CAM",
+      "type": "esp32_wrover",
+      "ip": "192.168.1.101",
+      "stream_port": 81,
+      "resolution": [640, 480],
+      "fps": 15,
+      "enabled": false
+    }
+  ],
+
+  "servers": {
+    "car": {
+      "host": "0.0.0.0",
+      "port": 8765,
+      "protocol": "websocket"
+    },
+    "camera": {
+      "host": "0.0.0.0",
+      "port": 8766,
+      "protocol": "websocket"
+    }
+  },
+
+  "control": {
+    "mode": "velocity",
+    "update_rate_hz": 50,
+    "deadzone": 10,
+    "acceleration_limit": 50
+  },
+
+  "teleoperation": {
+    "enabled": true,
+    "input_sources": ["websocket", "ir_remote", "bluetooth"],
+    "ir_remote_protocol": "NEC"
+  },
+
+  "recording": {
+    "fps": 30,
+    "format": "lerobot-v2",
+    "output_dir": "~/elegoo-datasets",
+    "include_sensors": ["ultrasonic", "ir_line", "ir_obstacle"],
+    "include_cameras": ["fpv"]
+  },
+
+  "mujoco": {
+    "model": "./mujoco/elegoo_car.xml",
+    "scene": "./mujoco/elegoo_car_scene.xml"
+  }
+}
