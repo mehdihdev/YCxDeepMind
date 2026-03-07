@@ -166,27 +166,80 @@
         </section>
 
         <section class="view" id="robot">
-          <article class="card">
-            <h3>Repository Analyzer (RDE)</h3>
-            <p class="muted">
-              Uses an RDE-style scan endpoint to build quick repo context.
-            </p>
-            <div class="stack-form">
-              <label for="robot-repo-select" class="muted">GitHub Repo (from your account)</label>
-              <select id="robot-repo-select">
-                <option value="">No repositories loaded</option>
-              </select>
-              <p id="robot-repo-meta" class="muted">Select a repository to bind as this robot's codebase.</p>
-            </div>
-            <form id="analyze-form" class="stack-form">
-              <input id="repo-path" type="text" placeholder="/absolute/path/to/repo" required />
-              <button type="submit">Analyze Repo</button>
-            </form>
-          </article>
-          <article class="card">
-            <h3>Analysis Output</h3>
-            <pre id="analysis-output" class="output">{}</pre>
-          </article>
+          <div class="robot-layout">
+            <article class="card full robot-hero">
+              <div class="robot-hero-copy">
+                <p class="settings-eyebrow">MY ROBOT</p>
+                <h3>Robot Graph + Agent Loop</h3>
+                <p class="muted">
+                  Build a self-extending graph for your robot, search parts and datasheets, generate a concrete build plan, and patch the graph when verification finds wiring or port mismatches.
+                </p>
+              </div>
+              <div class="stack-form robot-repo-stack">
+                <label for="robot-repo-select" class="muted">GitHub Repo (from your account)</label>
+                <select id="robot-repo-select">
+                  <option value="">No repositories loaded</option>
+                </select>
+                <p id="robot-repo-meta" class="muted">Select a repository to bind as this robot's codebase.</p>
+                <button id="robot-refresh-button" type="button">Load Robot Graph</button>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="repo-header">
+                <div>
+                  <h3>Graph Snapshot</h3>
+                  <p class="muted">Persistent robot state seeded for the hackathon demo stack.</p>
+                </div>
+                <p id="robot-graph-revision" class="storage-badge">Revision: 0</p>
+              </div>
+              <div id="robot-summary-grid" class="robot-summary-grid"></div>
+              <div class="robot-column-block">
+                <h4>Connections</h4>
+                <ul id="robot-edge-list" class="simple-list"></ul>
+              </div>
+            </article>
+
+            <article class="card">
+              <h3>Planner Agent</h3>
+              <p class="muted">Turn a build task into an actionable integration plan against the graph.</p>
+              <form id="robot-plan-form" class="stack-form">
+                <textarea id="robot-objective" rows="4" placeholder="Mount the LeRobot arm on the ELEGOO car base and create a pick-and-drive demo." required></textarea>
+                <button type="submit">Generate Plan</button>
+              </form>
+              <pre id="robot-plan-output" class="output">No planner run yet.</pre>
+            </article>
+
+            <article class="card">
+              <h3>Verifier Agent</h3>
+              <p class="muted">Feed back observed ports, mismatches, or runtime notes to patch the graph.</p>
+              <form id="robot-verify-form" class="stack-form">
+                <textarea id="robot-observations" rows="5" placeholder="Observed /dev/ttyACM0 for the arm controller, but the graph expected /dev/ttyUSB0. Camera is on CSI. Audio mic is on USB." required></textarea>
+                <button type="submit">Run Verifier</button>
+              </form>
+              <pre id="robot-verify-output" class="output">No verifier run yet.</pre>
+            </article>
+
+            <article class="card">
+              <h3>Parts Discovery</h3>
+              <p class="muted">Search the open web for parts, datasheets, and integration evidence.</p>
+              <form id="robot-discovery-form" class="stack-form">
+                <textarea id="robot-discovery-query" rows="4" placeholder="USB camera with Jetson NX CSI fallback, compact motor driver, and depth sensor options for an ELEGOO rover." required></textarea>
+                <button type="submit">Discover Parts</button>
+              </form>
+              <div id="robot-discovery-list" class="robot-discovery-list"></div>
+            </article>
+
+            <article class="card full">
+              <h3>Component Nodes</h3>
+              <div id="robot-node-grid" class="robot-node-grid"></div>
+            </article>
+
+            <article class="card full">
+              <h3>Graph Source</h3>
+              <pre id="robot-graph-output" class="output">{}</pre>
+            </article>
+          </div>
         </section>
 
         <section class="view" id="bench">

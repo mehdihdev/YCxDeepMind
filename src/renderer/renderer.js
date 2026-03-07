@@ -18,6 +18,21 @@ const repoShowMoreButton = document.getElementById("repo-show-more");
 const githubSummary = document.getElementById("github-summary");
 const robotRepoSelect = document.getElementById("robot-repo-select");
 const robotRepoMeta = document.getElementById("robot-repo-meta");
+const robotRefreshButton = document.getElementById("robot-refresh-button");
+const robotGraphRevision = document.getElementById("robot-graph-revision");
+const robotSummaryGrid = document.getElementById("robot-summary-grid");
+const robotEdgeList = document.getElementById("robot-edge-list");
+const robotNodeGrid = document.getElementById("robot-node-grid");
+const robotGraphOutput = document.getElementById("robot-graph-output");
+const robotPlanForm = document.getElementById("robot-plan-form");
+const robotObjectiveInput = document.getElementById("robot-objective");
+const robotPlanOutput = document.getElementById("robot-plan-output");
+const robotVerifyForm = document.getElementById("robot-verify-form");
+const robotObservationsInput = document.getElementById("robot-observations");
+const robotVerifyOutput = document.getElementById("robot-verify-output");
+const robotDiscoveryForm = document.getElementById("robot-discovery-form");
+const robotDiscoveryQueryInput = document.getElementById("robot-discovery-query");
+const robotDiscoveryList = document.getElementById("robot-discovery-list");
 const artifactGenerateForm = document.getElementById("artifact-generate-form");
 const artifactRepoSelect = document.getElementById("artifact-repo-select");
 const artifactSaveButton = document.getElementById("artifact-save-button");
@@ -62,10 +77,6 @@ const visualizerRepoSelect = document.getElementById("visualizer-repo-select");
 const visualizerOpenFolderButton = document.getElementById("visualizer-open-folder");
 const visualizerStats = document.getElementById("visualizer-stats");
 const visualizerGraphMount = document.getElementById("visualizer-graph");
-
-const analyzeForm = document.getElementById("analyze-form");
-const repoPathInput = document.getElementById("repo-path");
-const analysisOutput = document.getElementById("analysis-output");
 const teamModal = document.getElementById("team-modal");
 
 const labels = {
@@ -88,7 +99,7 @@ let mermaidLoaded = false;
 let visLoaded = false;
 let visNetwork = null;
 let currentCodeRepoPath = "";
-let currentVisualizerRepoPath = "";
+let currentRobotGraph = null;
 let currentTeamState = {
   storage: "unknown",
   teams: [],
@@ -185,6 +196,7 @@ function renderRobotRepoSelector() {
     if (robotRepoMeta) {
       robotRepoMeta.textContent = "Connect GitHub and refresh repos to select one.";
     }
+    renderRobotWorkspace({ graph: { nodes: [], edges: [] }, summary: {}, mermaid: "" });
     return;
   }
 
@@ -209,7 +221,7 @@ function renderRobotRepoSelector() {
 function updateRobotRepoMeta(fullName) {
   if (!robotRepoMeta) return;
   if (!fullName) {
-    robotRepoMeta.textContent = "Select a repository to bind as this robot's codebase.";
+    robotRepoMeta.textContent = "Select a repository to bind as this robot's codebase and graph workspace.";
     return;
   }
 
@@ -221,7 +233,7 @@ function updateRobotRepoMeta(fullName) {
 
   robotRepoMeta.textContent = `${repo.full_name} • ${repo.language || "Unknown"} • ${
     repo.private ? "Private" : "Public"
-  }`;
+  } • persisted robot graph`;
 }
 
 function renderArtifactRepoSelector() {
@@ -713,6 +725,155 @@ async function loadCodeFile(filePath) {
   }
 }
 
+function getSelectedRobotRepo() {
+  return robotRepoSelect?.value || localStorage.getItem("forge_selected_robot_repo") || "";
+}
+
+function formatRobotTimestamp(value) {
+  if (!value) return "Unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderRobotSummary(summary = {}) {
+  if (!robotSummaryGrid) return;
+
+  const stats = [
+    ["Nodes", summary.nodeCount ?? 0],
+    ["Edges", summary.edgeCount ?? 0],
+    ["Needs Verification", summary.verificationNeeded ?? 0],
+    ["Planner Runs", summary.plannerRuns ?? 0],
+    ["Verifier Runs", summary.verifierRuns ?? 0],
+    ["Discovery Runs", summary.discoveryRuns ?? 0]
+  ];
+
+  robotSummaryGrid.innerHTML = stats
+    .map(
+      ([labelText, value]) => `
+        <div class="robot-stat">
+          <p class="robot-stat-label">${labelText}</p>
+          <p class="robot-stat-value">${value}</p>
+        </div>
+      `
+    )
+    .join("");
+
+  if (robotGraphRevision) {
+    robotGraphRevision.textContent = `Revision: ${summary.revision ?? 0} • Updated ${formatRobotTimestamp(
+      summary.updatedAt
+    )}`;
+  }
+}
+
+function renderRobotEdges(edges = []) {
+  if (!robotEdgeList) return;
+  if (!edges.length) {
+    robotEdgeList.innerHTML = '<li class="empty-list">No connections recorded yet.</li>';
+    return;
+  }
+
+  robotEdgeList.innerHTML = "";
+  edges.forEach((edge) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<strong>${escapeHtml(edge.source)} → ${escapeHtml(edge.target)}</strong><span>${escapeHtml(edge.label)} • ${escapeHtml(edge.status)}</span>`;
+    robotEdgeList.appendChild(li);
+  });
+}
+
+function renderRobotNodes(nodes = []) {
+  if (!robotNodeGrid) return;
+  if (!nodes.length) {
+    robotNodeGrid.innerHTML = '<div class="empty-repo">No component nodes yet.</div>';
+    return;
+  }
+
+  robotNodeGrid.innerHTML = nodes
+    .map((node) => {
+      const ports = (node.ports || []).map((port) => port.name).filter(Boolean);
+      const interfaces = node.interfaces || [];
+      const pills = [...interfaces, ...ports].slice(0, 8);
+      return `
+        <article class="robot-node-card">
+          <h4>${escapeHtml(node.label)}</h4>
+          <p class="robot-node-meta">${escapeHtml(node.category)} • ${escapeHtml(node.status)}</p>
+          <p>${escapeHtml(node.description || "No description yet.")}</p>
+          <div class="robot-pill-row">
+            ${pills.length ? pills.map((pill) => `<span class="robot-pill">${escapeHtml(pill)}</span>`).join("") : '<span class="robot-pill">No interfaces yet</span>'}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderRobotDiscovery(run) {
+  if (!robotDiscoveryList) return;
+  const results = run?.results || [];
+  if (!results.length) {
+    robotDiscoveryList.innerHTML = '<div class="empty-repo">No discovery results yet.</div>';
+    return;
+  }
+
+  robotDiscoveryList.innerHTML = results
+    .map(
+      (result) => `
+        <article class="robot-discovery-card">
+          <h4>${escapeHtml(result.title || "Untitled result")}</h4>
+          <p class="robot-discovery-meta">Rank ${escapeHtml(result.rank)} • ${escapeHtml(result.sourceType || "web")}</p>
+          <p>${escapeHtml(result.excerpt || "No excerpt available.")}</p>
+          <a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">Open source</a>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderRobotWorkspace(data) {
+  currentRobotGraph = data?.graph || null;
+  renderRobotSummary(data?.summary || {});
+  renderRobotEdges(data?.graph?.edges || []);
+  renderRobotNodes(data?.graph?.nodes || []);
+  if (robotGraphOutput) {
+    robotGraphOutput.textContent = JSON.stringify(
+      {
+        mermaid: data?.mermaid || "",
+        graph: data?.graph || {}
+      },
+      null,
+      2
+    );
+  }
+}
+
+async function loadRobotWorkspace(repoFullName = getSelectedRobotRepo()) {
+  if (!repoFullName) {
+    if (robotRepoMeta) {
+      robotRepoMeta.textContent = "Select a repository to load its robot graph.";
+    }
+    renderRobotWorkspace({
+      graph: { nodes: [], edges: [] },
+      summary: {},
+      mermaid: ""
+    });
+    return;
+  }
+
+  const data = await apiJson(`/api/robot/graph?repoFullName=${encodeURIComponent(repoFullName)}`, {
+    method: "GET"
+  });
+  renderRobotWorkspace(data);
+}
+
 function renderTeamState(state) {
   currentTeamState = state;
   teamStorageBadge.textContent = `Storage: ${state.storage}`;
@@ -893,6 +1054,10 @@ async function refreshRepos() {
     setStatus("Loading repositories...");
     const data = await apiJson("/api/github/repos", { method: "GET" });
     renderRepos(data.repos || []);
+    const selectedRobotRepo = getSelectedRobotRepo();
+    if (selectedRobotRepo) {
+      await loadRobotWorkspace(selectedRobotRepo);
+    }
     setStatus(`Loaded ${data.repos.length} repositories`);
   } catch (err) {
     renderRepos([]);
@@ -949,10 +1114,36 @@ if (repoShowMoreButton) {
 }
 
 if (robotRepoSelect) {
-  robotRepoSelect.addEventListener("change", () => {
+  robotRepoSelect.addEventListener("change", async () => {
     const selected = robotRepoSelect.value;
     localStorage.setItem("forge_selected_robot_repo", selected);
     updateRobotRepoMeta(selected);
+    if (!selected) return;
+    try {
+      setStatus("Loading robot graph...");
+      await loadRobotWorkspace(selected);
+      setStatus("Robot graph loaded");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (robotRefreshButton) {
+  robotRefreshButton.addEventListener("click", async () => {
+    const repoFullName = getSelectedRobotRepo();
+    if (!repoFullName) {
+      setStatus("Select a repository first.", true);
+      return;
+    }
+
+    try {
+      setStatus("Refreshing robot graph...");
+      await loadRobotWorkspace(repoFullName);
+      setStatus("Robot graph refreshed");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
   });
 }
 
@@ -1338,23 +1529,84 @@ taskForm.addEventListener("submit", async (event) => {
   }
 });
 
-analyzeForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const repoPath = repoPathInput.value.trim();
-  if (!repoPath) return;
+if (robotPlanForm) {
+  robotPlanForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const repoFullName = getSelectedRobotRepo();
+    const objective = robotObjectiveInput?.value.trim() || "";
+    if (!repoFullName || !objective) {
+      setStatus("Select a repository and enter a planner objective.", true);
+      return;
+    }
 
-  try {
-    setStatus("Analyzing repository...");
-    const data = await apiJson("/api/rde/analyze", {
-      method: "POST",
-      body: JSON.stringify({ repoPath })
-    });
-    analysisOutput.textContent = JSON.stringify(data, null, 2);
-    setStatus("Analysis complete");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
+    try {
+      setStatus("Running planner agent...");
+      const data = await apiJson("/api/robot/plan", {
+        method: "POST",
+        body: JSON.stringify({ repoFullName, objective })
+      });
+      renderRobotWorkspace(data);
+      if (robotPlanOutput) {
+        robotPlanOutput.textContent = JSON.stringify(data.plan || {}, null, 2);
+      }
+      setStatus("Planner run complete");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (robotVerifyForm) {
+  robotVerifyForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const repoFullName = getSelectedRobotRepo();
+    const observations = robotObservationsInput?.value.trim() || "";
+    if (!repoFullName || !observations) {
+      setStatus("Select a repository and enter verifier observations.", true);
+      return;
+    }
+
+    try {
+      setStatus("Running verifier agent...");
+      const data = await apiJson("/api/robot/verify", {
+        method: "POST",
+        body: JSON.stringify({ repoFullName, observations })
+      });
+      renderRobotWorkspace(data);
+      if (robotVerifyOutput) {
+        robotVerifyOutput.textContent = JSON.stringify(data.run || {}, null, 2);
+      }
+      setStatus("Verifier run complete");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
+
+if (robotDiscoveryForm) {
+  robotDiscoveryForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const repoFullName = getSelectedRobotRepo();
+    const query = robotDiscoveryQueryInput?.value.trim() || "";
+    if (!repoFullName || !query) {
+      setStatus("Select a repository and enter a discovery query.", true);
+      return;
+    }
+
+    try {
+      setStatus("Searching for parts and datasheets...");
+      const data = await apiJson("/api/robot/discover", {
+        method: "POST",
+        body: JSON.stringify({ repoFullName, query })
+      });
+      renderRobotWorkspace(data);
+      renderRobotDiscovery(data.run);
+      setStatus(`Discovery complete: ${data.run?.resultCount || 0} results`);
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
+}
 
 window.forgeAPI
   .getAppMeta()
@@ -1366,9 +1618,8 @@ window.forgeAPI
   });
 
 setActiveView("workspace");
-if (artifactMermaid?.textContent) {
-  renderArtifactDiagram(artifactMermaid.textContent);
-}
+renderRobotDiscovery(null);
+renderRobotWorkspace({ graph: { nodes: [], edges: [] }, summary: {}, mermaid: "" });
 
 refreshSession().catch(() => {
   setStatus("Unable to load session", true);

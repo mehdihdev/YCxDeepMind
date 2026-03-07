@@ -201,6 +201,7 @@ body {
 
 .inline-form input,
 .stack-form input,
+.stack-form textarea,
 .stack-form select,
 select {
   width: 100%;
@@ -210,6 +211,13 @@ select {
   border: 1px solid var(--border);
   background: #0a1322;
   color: var(--text);
+}
+
+.stack-form textarea {
+  resize: vertical;
+  min-height: 110px;
+  font-family: var(--font-sans);
+  line-height: 1.45;
 }
 
 button {
@@ -502,6 +510,130 @@ code,
 .danger-zone { border-color: #8a2f50; background: rgba(86, 29, 52, 0.22); }
 .settings-footer-actions { margin-top: 20px; }
 
+.robot-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.robot-layout .card {
+  grid-column: span 6;
+}
+
+.robot-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.robot-hero-copy h3 {
+  margin-top: 6px;
+  font-size: 30px;
+}
+
+.robot-repo-stack {
+  margin-top: 0;
+  padding: 14px;
+  border: 1px solid #274163;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(9, 20, 35, 0.95), rgba(5, 14, 27, 0.95));
+}
+
+.robot-summary-grid,
+.robot-node-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.robot-summary-grid {
+  margin-top: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.robot-stat {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #0a1322;
+  padding: 12px;
+}
+
+.robot-stat-label {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8eb2de;
+  font-family: var(--font-mono);
+}
+
+.robot-stat-value {
+  margin: 8px 0 0;
+  font-size: 28px;
+  color: #f6fbff;
+}
+
+.robot-column-block {
+  margin-top: 14px;
+}
+
+.robot-column-block h4 {
+  margin: 0 0 10px;
+}
+
+.robot-node-grid {
+  margin-top: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.robot-node-card,
+.robot-discovery-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #0a1322;
+  padding: 14px;
+}
+
+.robot-node-card h4,
+.robot-discovery-card h4 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.robot-node-meta,
+.robot-discovery-meta {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #95adcc;
+}
+
+.robot-pill-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.robot-pill {
+  border: 1px solid #304a72;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  color: #b8d7ff;
+  font-family: var(--font-mono);
+}
+
+.robot-discovery-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.robot-discovery-card a {
+  color: #78d4ff;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -681,6 +813,7 @@ code,
   .team-grid { grid-template-columns: 1fr; }
   .workspace-layout { grid-template-columns: 1fr; }
   .code-layout { grid-template-columns: 1fr; }
+  .robot-hero { grid-template-columns: 1fr; }
   .settings-title { font-size: 34px; }
   .settings-block h4 { font-size: 22px; }
   .integration-row { flex-direction: column; align-items: flex-start; }

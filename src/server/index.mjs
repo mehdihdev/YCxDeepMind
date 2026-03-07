@@ -55,6 +55,8 @@ app.use(express.urlencoded({ extended: true }));
 const FileStore = sessionFileStore(session);
 const sessionDir = path.join(os.homedir(), ".forge-rde", "sessions");
 fsSync.mkdirSync(sessionDir, { recursive: true });
+const robotGraphDir = path.join(os.homedir(), ".forge-rde", "robot-graphs");
+fsSync.mkdirSync(robotGraphDir, { recursive: true });
 
 app.use(
   session({
@@ -803,6 +805,609 @@ Task:
   };
 }
 
+function robotGraphFilePath(repoFullName) {
+  const safe = String(repoFullName || "default-robot")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return path.join(robotGraphDir, `${safe || "default-robot"}.json`);
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function createSeedRobotGraph(repoFullName) {
+  const timestamp = nowIso();
+  return {
+    metadata: {
+      repoFullName,
+      robotName: "Forge Demo Robot",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      revision: 1,
+      summary:
+        "Seeded graph for the YC x Google DeepMind hackathon stack: ELEGOO rover, LeRobot arm, Jetson NX, camera, audio, planner, verifier.",
+      goals: [
+        "Unify robot docs, code, and discovered part evidence.",
+        "Support pick-and-drive demo planning.",
+        "Patch component and port facts when verification finds a mismatch."
+      ]
+    },
+    nodes: [
+      {
+        id: "elegoo_car_base",
+        label: "ELEGOO Car Base",
+        category: "mobility",
+        status: "known",
+        description: "Rover chassis and drive platform.",
+        interfaces: ["power", "motor-control"],
+        ports: [],
+        evidence: [{ type: "seed", title: "Hackathon demo baseline", source: "planner-doc" }]
+      },
+      {
+        id: "lerobot_arm",
+        label: "LeRobot Arm",
+        category: "manipulator",
+        status: "known",
+        description: "Manipulator for pick-and-place actions mounted onto the rover.",
+        interfaces: ["usb", "serial", "power"],
+        ports: [{ name: "/dev/ttyUSB0", type: "serial", direction: "bidirectional" }],
+        evidence: [{ type: "seed", title: "Hackathon demo baseline", source: "planner-doc" }]
+      },
+      {
+        id: "jetson_nx",
+        label: "Jetson NX",
+        category: "compute",
+        status: "known",
+        description: "Primary onboard compute brain for planning, perception, and verification.",
+        interfaces: ["usb", "csi", "gpio", "uart", "ethernet", "audio"],
+        ports: [],
+        evidence: [{ type: "seed", title: "Hackathon demo baseline", source: "planner-doc" }]
+      },
+      {
+        id: "vision_camera",
+        label: "Camera",
+        category: "sensor",
+        status: "needs-verification",
+        description: "Primary video input for multimodal graph building and live bench verification.",
+        interfaces: ["usb", "csi"],
+        ports: [],
+        evidence: [{ type: "seed", title: "Planner demo mentions camera/video", source: "planner-doc" }]
+      },
+      {
+        id: "audio_input",
+        label: "Audio Input",
+        category: "sensor",
+        status: "needs-verification",
+        description: "Microphone or audio capture path for sound-based verification.",
+        interfaces: ["usb", "audio-jack"],
+        ports: [],
+        evidence: [{ type: "seed", title: "Planner demo mentions audio", source: "planner-doc" }]
+      },
+      {
+        id: "planner_agent",
+        label: "Planner Agent",
+        category: "agent",
+        status: "active",
+        description: "Turns a task into an integration plan against the robot graph.",
+        interfaces: ["graph-read", "graph-write"],
+        ports: [],
+        evidence: [{ type: "seed", title: "Planner agent requested by product scope", source: "user-request" }]
+      },
+      {
+        id: "verifier_agent",
+        label: "Verifier Agent",
+        category: "agent",
+        status: "active",
+        description: "Checks observations against graph facts and patches mismatches.",
+        interfaces: ["graph-read", "graph-write", "video", "audio"],
+        ports: [],
+        evidence: [{ type: "seed", title: "Verifier agent requested by product scope", source: "user-request" }]
+      }
+    ],
+    edges: [
+      {
+        source: "jetson_nx",
+        target: "lerobot_arm",
+        label: "controls over USB serial",
+        status: "needs-verification"
+      },
+      {
+        source: "jetson_nx",
+        target: "vision_camera",
+        label: "receives video stream",
+        status: "needs-verification"
+      },
+      {
+        source: "jetson_nx",
+        target: "audio_input",
+        label: "receives audio stream",
+        status: "needs-verification"
+      },
+      {
+        source: "elegoo_car_base",
+        target: "lerobot_arm",
+        label: "mechanical mount",
+        status: "planned"
+      },
+      {
+        source: "planner_agent",
+        target: "verifier_agent",
+        label: "patch and rerun loop",
+        status: "active"
+      }
+    ],
+    runs: {
+      planner: [],
+      verifier: [],
+      discovery: []
+    }
+  };
+}
+
+async function loadRobotGraph(repoFullName) {
+  const filePath = robotGraphFilePath(repoFullName);
+  try {
+    const raw = await fs.readFile(filePath, "utf-8");
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    const seeded = createSeedRobotGraph(repoFullName);
+    await saveRobotGraph(repoFullName, seeded);
+    return seeded;
+  }
+}
+
+async function saveRobotGraph(repoFullName, graph) {
+  const nextGraph = {
+    ...graph,
+    metadata: {
+      ...graph.metadata,
+      repoFullName,
+      updatedAt: nowIso(),
+      revision: Number(graph.metadata?.revision || 0) + 1
+    }
+  };
+  await fs.writeFile(robotGraphFilePath(repoFullName), JSON.stringify(nextGraph, null, 2));
+  return nextGraph;
+}
+
+function pushUnique(list, value) {
+  if (!value) return list;
+  if (!list.includes(value)) {
+    list.push(value);
+  }
+  return list;
+}
+
+function ensureNode(graph, candidate) {
+  const existing = graph.nodes.find((node) => node.id === candidate.id);
+  if (existing) return existing;
+  const created = {
+    ports: [],
+    interfaces: [],
+    evidence: [],
+    ...candidate
+  };
+  graph.nodes.push(created);
+  return created;
+}
+
+function upsertEdge(graph, edge) {
+  const existing = graph.edges.find(
+    (item) =>
+      item.source === edge.source &&
+      item.target === edge.target &&
+      item.label.toLowerCase() === edge.label.toLowerCase()
+  );
+  if (existing) {
+    existing.status = edge.status || existing.status;
+    return existing;
+  }
+  graph.edges.push(edge);
+  return edge;
+}
+
+function toSlug(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function summarizeGraph(graph) {
+  const verificationNeeded = graph.nodes.filter((node) => node.status === "needs-verification").length;
+  return {
+    revision: graph.metadata?.revision || 0,
+    nodeCount: graph.nodes.length,
+    edgeCount: graph.edges.length,
+    verificationNeeded,
+    discoveryRuns: graph.runs?.discovery?.length || 0,
+    plannerRuns: graph.runs?.planner?.length || 0,
+    verifierRuns: graph.runs?.verifier?.length || 0,
+    updatedAt: graph.metadata?.updatedAt || graph.metadata?.createdAt || nowIso()
+  };
+}
+
+function graphToMermaid(graph) {
+  const lines = ["flowchart LR"];
+  for (const node of graph.nodes) {
+    lines.push(`  ${node.id}[\"${String(node.label || node.id).replace(/"/g, "'")}\"]`);
+  }
+  for (const edge of graph.edges) {
+    const label = String(edge.label || "").replace(/"/g, "'");
+    lines.push(`  ${edge.source} -->|\"${label}\"| ${edge.target}`);
+  }
+  return lines.join("\n");
+}
+
+function htmlEntityDecode(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function stripHtml(value) {
+  return htmlEntityDecode(String(value || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+}
+
+function normalizeSearchResultUrl(rawUrl) {
+  const decoded = htmlEntityDecode(rawUrl);
+  const withProtocol = decoded.startsWith("//") ? `https:${decoded}` : decoded;
+  try {
+    const url = new URL(withProtocol);
+    const redirected = url.searchParams.get("uddg");
+    return redirected ? decodeURIComponent(redirected) : withProtocol;
+  } catch {
+    return withProtocol;
+  }
+}
+
+async function searchDuckDuckGo(query) {
+  const endpoint = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const response = await fetch(endpoint, {
+    headers: {
+      "User-Agent": "forge-rde"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Parts search failed (${response.status}).`);
+  }
+
+  const html = await response.text();
+  const matches = Array.from(
+    html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)
+  );
+
+  return matches.slice(0, 6).map((match, index) => ({
+    rank: index + 1,
+    url: normalizeSearchResultUrl(match[1]),
+    title: stripHtml(match[2])
+  }));
+}
+
+async function fetchSearchEvidence(url) {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "forge-rde"
+      }
+    });
+    if (!response.ok) {
+      return { url, excerpt: "", sourceType: "unavailable" };
+    }
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (contentType.includes("pdf")) {
+      return { url, excerpt: "PDF datasheet discovered.", sourceType: "pdf" };
+    }
+    const html = await response.text();
+    const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/i);
+    const descriptionMatch = html.match(
+      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i
+    );
+    const excerpt = stripHtml(descriptionMatch?.[1] || html).slice(0, 280);
+    return {
+      url,
+      title: stripHtml(titleMatch?.[1] || ""),
+      excerpt,
+      sourceType: contentType.includes("html") ? "web" : "unknown"
+    };
+  } catch {
+    return { url, excerpt: "", sourceType: "unavailable" };
+  }
+}
+
+function inferCategoryFromSearch(title, excerpt) {
+  const text = `${title} ${excerpt}`.toLowerCase();
+  if (text.includes("camera") || text.includes("depth")) return "sensor";
+  if (text.includes("motor driver") || text.includes("servo driver")) return "actuation";
+  if (text.includes("battery") || text.includes("power")) return "power";
+  if (text.includes("arm") || text.includes("gripper")) return "manipulator";
+  return "part-candidate";
+}
+
+function extractPortsAndInterfaces(text) {
+  const source = String(text || "");
+  const ports = Array.from(new Set(source.match(/\/dev\/(?:tty[A-Za-z]+|cu\.[A-Za-z0-9._-]+|tty\w+)/g) || []));
+  const lowered = source.toLowerCase();
+  const interfaces = [];
+  const known = [
+    "usb",
+    "uart",
+    "i2c",
+    "spi",
+    "gpio",
+    "csi",
+    "ethernet",
+    "can",
+    "serial",
+    "audio"
+  ];
+  for (const item of known) {
+    if (lowered.includes(item)) {
+      interfaces.push(item);
+    }
+  }
+  return { ports, interfaces };
+}
+
+function buildDiscoveryNodes(query, results) {
+  return results.map((result, index) => {
+    const category = inferCategoryFromSearch(result.title, result.excerpt || "");
+    const { ports, interfaces } = extractPortsAndInterfaces(`${result.title} ${result.excerpt || ""}`);
+    return {
+      id: `${toSlug(category)}_${toSlug(result.title).slice(0, 28) || index + 1}`,
+      label: result.title || `Candidate ${index + 1}`,
+      category,
+      status: "candidate",
+      description: result.excerpt || "Candidate component discovered from web search.",
+      interfaces,
+      ports: ports.map((port) => ({ name: port, type: "observed", direction: "unknown" })),
+      evidence: [
+        {
+          type: "search-result",
+          title: result.title || "Search result",
+          url: result.url,
+          excerpt: result.excerpt || "",
+          source: "duckduckgo"
+        }
+      ]
+    };
+  });
+}
+
+function mergeDiscoveryIntoGraph(graph, query, discoveryNodes) {
+  const createdIds = [];
+  for (const node of discoveryNodes) {
+    const existing = graph.nodes.find(
+      (item) => item.label.toLowerCase() === node.label.toLowerCase() || item.id === node.id
+    );
+    if (existing) {
+      existing.status = existing.status === "known" ? existing.status : "candidate";
+      existing.description = existing.description || node.description;
+      for (const iface of node.interfaces || []) {
+        pushUnique(existing.interfaces, iface);
+      }
+      for (const port of node.ports || []) {
+        if (!existing.ports.some((item) => item.name === port.name)) {
+          existing.ports.push(port);
+        }
+      }
+      existing.evidence = [...(existing.evidence || []), ...(node.evidence || [])].slice(-8);
+      createdIds.push(existing.id);
+      continue;
+    }
+
+    graph.nodes.push(node);
+    createdIds.push(node.id);
+    upsertEdge(graph, {
+      source: "planner_agent",
+      target: node.id,
+      label: `research for ${query.slice(0, 42)}`,
+      status: "candidate"
+    });
+  }
+  return createdIds;
+}
+
+async function discoverRobotParts(repoFullName, query) {
+  const graph = await loadRobotGraph(repoFullName);
+  const rawResults = await searchDuckDuckGo(query);
+  const enriched = [];
+  for (const result of rawResults) {
+    const evidence = await fetchSearchEvidence(result.url);
+    enriched.push({
+      ...result,
+      excerpt: evidence.excerpt || "",
+      sourceType: evidence.sourceType || "web"
+    });
+  }
+
+  const discoveryNodes = buildDiscoveryNodes(query, enriched);
+  const mergedNodeIds = mergeDiscoveryIntoGraph(graph, query, discoveryNodes);
+  const run = {
+    query,
+    createdAt: nowIso(),
+    resultCount: enriched.length,
+    mergedNodeIds,
+    results: enriched
+  };
+  graph.runs.discovery.unshift(run);
+  return {
+    graph: await saveRobotGraph(repoFullName, graph),
+    run
+  };
+}
+
+function buildPlannerPlan(graph, objective) {
+  const missingNodes = graph.nodes.filter((node) => node.status === "needs-verification");
+  const plan = {
+    objective,
+    createdAt: nowIso(),
+    phases: [
+      {
+        name: "Stabilize Graph",
+        tasks: [
+          "Confirm the exact camera path and transport mode.",
+          "Confirm the audio capture device and whether it is USB or analog.",
+          "Verify the manipulator serial device path on the Jetson."
+        ]
+      },
+      {
+        name: "Mechanical + Electrical Integration",
+        tasks: [
+          "Mount the LeRobot arm onto the ELEGOO rover with a rigid bracket and center-of-mass check.",
+          "Route clean power distribution between Jetson NX, rover base, and manipulator.",
+          "Label every cable and document the final interface path in the graph."
+        ]
+      },
+      {
+        name: "Bringup",
+        tasks: [
+          "Bring up the Jetson, arm controller, camera, and audio pipeline one subsystem at a time.",
+          "Record observed device nodes such as /dev/ttyACM0 or /dev/ttyUSB0.",
+          "Run the verifier after each bringup step and patch the graph before continuing."
+        ]
+      },
+      {
+        name: "Demo Loop",
+        tasks: [
+          "Execute a pick-and-drive mission.",
+          "Capture visual and audio evidence while the verifier compares behavior to the graph.",
+          "Save the best plan/fix artifacts into the team workspace."
+        ]
+      }
+    ],
+    requiredSearches: [
+      "mounting bracket for LeRobot arm on ELEGOO rover",
+      "Jetson NX compatible camera datasheet",
+      "Jetson NX USB microphone robotics"
+    ],
+    blockers: missingNodes.map((node) => `${node.label} is still marked ${node.status}`),
+    recommendedOrder: graph.edges.map((edge) => `${edge.source} -> ${edge.target}: ${edge.label}`)
+  };
+  return plan;
+}
+
+async function runPlanner(repoFullName, objective) {
+  const graph = await loadRobotGraph(repoFullName);
+  const plan = buildPlannerPlan(graph, objective);
+  graph.runs.planner.unshift(plan);
+  return {
+    graph: await saveRobotGraph(repoFullName, graph),
+    plan
+  };
+}
+
+function chooseVerificationNode(graph, observationText) {
+  const text = observationText.toLowerCase();
+  if (text.includes("camera") || text.includes("csi") || text.includes("video")) {
+    return graph.nodes.find((node) => node.id === "vision_camera");
+  }
+  if (text.includes("audio") || text.includes("mic")) {
+    return graph.nodes.find((node) => node.id === "audio_input");
+  }
+  if (text.includes("arm") || text.includes("gripper") || text.includes("tty")) {
+    return graph.nodes.find((node) => node.id === "lerobot_arm");
+  }
+  return graph.nodes.find((node) => node.id === "jetson_nx");
+}
+
+function applyVerification(graph, observationText) {
+  const findings = [];
+  const targetNode = chooseVerificationNode(graph, observationText);
+  const parsed = extractPortsAndInterfaces(observationText);
+  const expectedPorts = (targetNode?.ports || []).map((port) => port.name);
+
+  if (targetNode && parsed.ports.length) {
+    for (const port of parsed.ports) {
+      if (!targetNode.ports.some((item) => item.name === port)) {
+        targetNode.ports.push({ name: port, type: "observed", direction: "bidirectional" });
+      }
+    }
+
+    if (expectedPorts.length && !parsed.ports.some((port) => expectedPorts.includes(port))) {
+      findings.push({
+        type: "port-mismatch",
+        nodeId: targetNode.id,
+        severity: "high",
+        message: `${targetNode.label} expected ${expectedPorts.join(", ")} but observed ${parsed.ports.join(", ")}.`
+      });
+    } else {
+      findings.push({
+        type: "port-confirmed",
+        nodeId: targetNode.id,
+        severity: "info",
+        message: `${targetNode.label} observed on ${parsed.ports.join(", ")}.`
+      });
+    }
+  }
+
+  if (targetNode && parsed.interfaces.length) {
+    for (const item of parsed.interfaces) {
+      pushUnique(targetNode.interfaces, item);
+    }
+    if (targetNode.status === "needs-verification") {
+      targetNode.status = "known";
+    }
+  }
+
+  if (/expected/i.test(observationText) && /observed/i.test(observationText) && !findings.length) {
+    findings.push({
+      type: "mismatch-note",
+      nodeId: targetNode?.id || "unknown",
+      severity: "medium",
+      message: "Observation indicates an expected-versus-observed mismatch. Graph was updated with the new evidence."
+    });
+  }
+
+  if (targetNode) {
+    targetNode.evidence = [
+      ...(targetNode.evidence || []),
+      {
+        type: "verification",
+        title: "Verifier observation",
+        excerpt: observationText.slice(0, 280),
+        source: "verifier-agent"
+      }
+    ].slice(-10);
+  }
+
+  const run = {
+    createdAt: nowIso(),
+    observationText,
+    targetNodeId: targetNode?.id || null,
+    findings
+  };
+  graph.runs.verifier.unshift(run);
+  return run;
+}
+
+async function runVerifier(repoFullName, observationText) {
+  const graph = await loadRobotGraph(repoFullName);
+  const run = applyVerification(graph, observationText);
+  return {
+    graph: await saveRobotGraph(repoFullName, graph),
+    run
+  };
+}
+
+async function getRobotWorkspace(repoFullName) {
+  const graph = await loadRobotGraph(repoFullName);
+  return {
+    graph,
+    summary: summarizeGraph(graph),
+    mermaid: graphToMermaid(graph)
+  };
+}
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "forge-rde-server", appUrl: APP_URL });
 });
@@ -1055,6 +1660,84 @@ app.post("/api/rde/analyze", requireAuth, async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Analyze failed." });
+  }
+});
+
+app.get("/api/robot/graph", requireAuth, async (req, res) => {
+  const repoFullName = String(req.query.repoFullName || "").trim();
+  if (!repoFullName) {
+    res.status(400).json({ error: "repoFullName is required." });
+    return;
+  }
+
+  try {
+    const workspace = await getRobotWorkspace(repoFullName);
+    res.json(workspace);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to load robot graph." });
+  }
+});
+
+app.post("/api/robot/discover", requireAuth, async (req, res) => {
+  const repoFullName = String(req.body?.repoFullName || "").trim();
+  const query = String(req.body?.query || "").trim();
+  if (!repoFullName || !query) {
+    res.status(400).json({ error: "repoFullName and query are required." });
+    return;
+  }
+
+  try {
+    const result = await discoverRobotParts(repoFullName, query);
+    res.json({
+      run: result.run,
+      summary: summarizeGraph(result.graph),
+      mermaid: graphToMermaid(result.graph),
+      graph: result.graph
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Parts discovery failed." });
+  }
+});
+
+app.post("/api/robot/plan", requireAuth, async (req, res) => {
+  const repoFullName = String(req.body?.repoFullName || "").trim();
+  const objective = String(req.body?.objective || "").trim();
+  if (!repoFullName || !objective) {
+    res.status(400).json({ error: "repoFullName and objective are required." });
+    return;
+  }
+
+  try {
+    const result = await runPlanner(repoFullName, objective);
+    res.json({
+      plan: result.plan,
+      summary: summarizeGraph(result.graph),
+      mermaid: graphToMermaid(result.graph),
+      graph: result.graph
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Planner run failed." });
+  }
+});
+
+app.post("/api/robot/verify", requireAuth, async (req, res) => {
+  const repoFullName = String(req.body?.repoFullName || "").trim();
+  const observations = String(req.body?.observations || "").trim();
+  if (!repoFullName || !observations) {
+    res.status(400).json({ error: "repoFullName and observations are required." });
+    return;
+  }
+
+  try {
+    const result = await runVerifier(repoFullName, observations);
+    res.json({
+      run: result.run,
+      summary: summarizeGraph(result.graph),
+      mermaid: graphToMermaid(result.graph),
+      graph: result.graph
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Verifier run failed." });
   }
 });
 
