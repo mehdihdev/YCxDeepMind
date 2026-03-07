@@ -1,0 +1,29 @@
+{
+  "name": "forge-rde",
+  "version": "0.1.0",
+  "description": "Forge RDE base Electron app scaffold",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "dev:remote": "FORGE_REMOTE_URL=https://solusforge.com electron .",
+    "start": "electron .",
+    "server": "node src/server/index.mjs",
+    "test": "echo \"No tests configured yet\""
+  },
+  "keywords": [
+    "electron",
+    "robotics",
+    "forge-rde"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0"
+  }
+}

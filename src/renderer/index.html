@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Forge RDE</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <h1>Forge RDE</h1>
+        <p class="tagline">Merged Forge + RDE environment</p>
+        <nav class="nav">
+          <button class="nav-item active" data-view="workspace">Team Workspace</button>
+          <button class="nav-item" data-view="robot">My Robot</button>
+          <button class="nav-item" data-view="bench">Live Bench</button>
+          <button class="nav-item" data-view="artifacts">Artifacts</button>
+        </nav>
+      </aside>
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <h2 id="view-title">Team Workspace</h2>
+            <p id="meta">Loading app metadata...</p>
+            <p id="status-text"></p>
+          </div>
+          <button id="account-button" class="account-button" type="button">Sign in</button>
+        </header>
+
+        <section class="view active" id="workspace">
+          <article class="card full">
+            <div class="repo-header">
+              <div>
+                <h3>GitHub connection</h3>
+                <p class="muted" id="github-summary">Connect GitHub to load recent projects.</p>
+              </div>
+              <div class="actions">
+                <button id="github-connect" type="button">Connect GitHub</button>
+                <button id="repos-refresh" type="button">Refresh Repos</button>
+              </div>
+            </div>
+            <div id="repo-grid" class="repo-grid"></div>
+          </article>
+        </section>
+
+        <section class="view" id="robot">
+          <article class="card">
+            <h3>Repository Analyzer (RDE)</h3>
+            <p class="muted">
+              Uses an RDE-style scan endpoint to build quick repo context.
+            </p>
+            <form id="analyze-form" class="stack-form">
+              <input id="repo-path" type="text" placeholder="/absolute/path/to/repo" required />
+              <button type="submit">Analyze Repo</button>
+            </form>
+          </article>
+          <article class="card">
+            <h3>Analysis Output</h3>
+            <pre id="analysis-output" class="output">{}</pre>
+          </article>
+        </section>
+
+        <section class="view" id="bench">
+          <div class="card-grid">
+            <article class="card">
+              <h3>Live Video Stream</h3>
+              <p>Camera feed and visual mismatch analysis.</p>
+            </article>
+            <article class="card">
+              <h3>Audio + Metrics</h3>
+              <p>Motor/servo sound profile and verifier metrics.</p>
+            </article>
+            <article class="card">
+              <h3>Diagnosis</h3>
+              <p>Root cause hypotheses and concrete fix proposals.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="artifacts">
+          <article class="card full">
+            <h3>Generated Engineering Artifacts</h3>
+            <p>System diagrams, failure overlays, and benchmark outputs.</p>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div id="signin-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <div class="modal-card">
+        <h3>Sign in to Forge RDE</h3>
+        <form id="login-form" class="stack-form">
+          <input id="email" type="email" placeholder="Email" required />
+          <input id="password" type="password" placeholder="Password" required />
+          <button type="submit">Sign in</button>
+        </form>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
