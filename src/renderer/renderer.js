@@ -20,6 +20,7 @@ const teamCreateForm = document.getElementById("team-create-form");
 const teamJoinForm = document.getElementById("team-join-form");
 const teamSwitchForm = document.getElementById("team-switch-form");
 const teamSelect = document.getElementById("team-select");
+const teamPillList = document.getElementById("team-pill-list");
 const activeTeamMeta = document.getElementById("active-team-meta");
 const membersList = document.getElementById("team-members-list");
 
@@ -28,12 +29,6 @@ const taskTitleInput = document.getElementById("team-task-title");
 const taskAssigneeInput = document.getElementById("team-task-assignee");
 const taskList = document.getElementById("team-task-list");
 
-const runForm = document.getElementById("team-run-form");
-const runTitleInput = document.getElementById("team-run-title");
-const runSummaryInput = document.getElementById("team-run-summary");
-const fixForm = document.getElementById("team-fix-form");
-const fixTitleInput = document.getElementById("team-fix-title");
-const fixSummaryInput = document.getElementById("team-fix-summary");
 const artifactList = document.getElementById("team-artifact-list");
 const settingsProfileForm = document.getElementById("settings-profile-form");
 const settingsFirstNameInput = document.getElementById("settings-first-name");
@@ -189,12 +184,19 @@ function updateRobotRepoMeta(fullName) {
 
 function openSignInModal() {
   signInModal.classList.remove("hidden");
+  signInModal.classList.remove("closing");
+  signInModal.classList.add("opening");
   signInModal.setAttribute("aria-hidden", "false");
 }
 
 function closeSignInModal() {
-  signInModal.classList.add("hidden");
-  signInModal.setAttribute("aria-hidden", "true");
+  signInModal.classList.remove("opening");
+  signInModal.classList.add("closing");
+  setTimeout(() => {
+    signInModal.classList.add("hidden");
+    signInModal.setAttribute("aria-hidden", "true");
+    signInModal.classList.remove("closing");
+  }, 220);
 }
 
 async function apiJson(path, options = {}) {
@@ -238,6 +240,31 @@ function renderTeamState(state) {
   activeTeamMeta.textContent = activeTeam
     ? `Active: ${activeTeam.name} • Invite code: ${activeTeam.invite_code}`
     : "No active team";
+
+  if (teamPillList) {
+    teamPillList.innerHTML = "";
+    state.teams.forEach((team) => {
+      const li = document.createElement("li");
+      li.className = `team-pill ${team.id === state.activeTeamId ? "active" : ""}`;
+      li.innerHTML = `
+        <span>${team.name}</span>
+        ${team.role === "owner" ? `<button type="button" data-delete-team="${team.id}" class="team-pill-delete">×</button>` : ""}
+      `;
+      teamPillList.appendChild(li);
+    });
+  }
+
+  if (taskAssigneeInput) {
+    const previous = taskAssigneeInput.value;
+    taskAssigneeInput.innerHTML = '<option value="">Unassigned</option>';
+    state.members.forEach((member) => {
+      const option = document.createElement("option");
+      option.value = member.user_id;
+      option.textContent = member.user?.name || member.user?.email || member.user_id;
+      option.selected = previous === member.user_id;
+      taskAssigneeInput.appendChild(option);
+    });
+  }
 
   membersList.innerHTML = "";
   if (!state.members.length) {
@@ -563,46 +590,6 @@ taskForm.addEventListener("submit", async (event) => {
   }
 });
 
-runForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const titleText = runTitleInput.value.trim();
-  const summary = runSummaryInput.value.trim();
-  if (!titleText) return;
-
-  try {
-    setStatus("Saving run...");
-    await apiJson("/api/team/artifacts", {
-      method: "POST",
-      body: JSON.stringify({ type: "run", title: titleText, summary })
-    });
-    runForm.reset();
-    await refreshTeamState();
-    setStatus("Run saved");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
-
-fixForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const titleText = fixTitleInput.value.trim();
-  const summary = fixSummaryInput.value.trim();
-  if (!titleText) return;
-
-  try {
-    setStatus("Saving fix...");
-    await apiJson("/api/team/artifacts", {
-      method: "POST",
-      body: JSON.stringify({ type: "fix", title: titleText, summary })
-    });
-    fixForm.reset();
-    await refreshTeamState();
-    setStatus("Fix saved");
-  } catch (err) {
-    setStatus(err.message, true);
-  }
-});
-
 analyzeForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const repoPath = repoPathInput.value.trim();
@@ -640,5 +627,20 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof HTMLElement && target.dataset.closeModal === "true") {
     closeSignInModal();
+  }
+
+  if (target instanceof HTMLElement && target.dataset.deleteTeam) {
+    const teamId = target.dataset.deleteTeam;
+    const confirmed = window.confirm("Delete this team?");
+    if (!confirmed) return;
+
+    apiJson(`/api/team/${teamId}`, { method: "DELETE" })
+      .then(async () => {
+        await refreshTeamState();
+        setStatus("Team deleted");
+      })
+      .catch((err) => {
+        setStatus(err.message, true);
+      });
   }
 });

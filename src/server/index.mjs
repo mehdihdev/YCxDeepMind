@@ -792,6 +792,56 @@ app.post("/api/team/switch", requireAuth, async (req, res) => {
   }
 });
 
+app.delete("/api/team/:teamId", requireAuth, async (req, res) => {
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "Team workspace requires SUPABASE_SERVICE_ROLE_KEY." });
+    return;
+  }
+
+  const teamId = String(req.params.teamId || "");
+  const userId = req.session.user?.id;
+  if (!teamId) {
+    res.status(400).json({ error: "teamId is required." });
+    return;
+  }
+
+  try {
+    const ownership = await supabaseAdmin
+      .from(TEAM_TABLES.workspaces)
+      .select("id")
+      .eq("id", teamId)
+      .eq("owner_user_id", userId)
+      .maybeSingle();
+
+    if (ownership.error) {
+      throw ownership.error;
+    }
+    if (!ownership.data) {
+      res.status(403).json({ error: "Only the team owner can delete this team." });
+      return;
+    }
+
+    const deleted = await supabaseAdmin.from(TEAM_TABLES.workspaces).delete().eq("id", teamId);
+    if (deleted.error) {
+      throw deleted.error;
+    }
+
+    if (req.session.activeTeamId === teamId) {
+      req.session.activeTeamId = null;
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    if (missingTableError(err)) {
+      res.status(500).json({
+        error: "Team workspace tables are missing. Run supabase/team_workspace_schema.sql first."
+      });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Unable to delete team." });
+  }
+});
+
 app.post("/api/team/tasks", requireAuth, async (req, res) => {
   const title = String(req.body?.title || "").trim();
   const assigneeUserId = String(req.body?.assigneeUserId || "").trim() || null;
