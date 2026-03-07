@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-03-07T23:10:58.309Z",
+  "generatedBy": "forge-rde",
+  "workspace": "forge-rde-lerobot",
+  "parts": [
+    {
+      "id": "207d3eff-bd4b-4394-9c33-e1d2dd43c30d",
+      "requirementId": "42bc41a7-590d-4d4b-9326-9f84cfc8a567",
+      "requirementTitle": "esp 32",
+      "partName": "ESP32 Wi-Fi &amp; Bluetooth SoC | Espressif Systems",
+      "partUrl": "https://www.espressif.com/en/products/socs/esp32",
+      "interfaces": [],
+      "fitSummary": "Candidate option for esp 32.",
+      "selectedAt": "2026-03-07T23:10:58.307Z"
+    }
+  ]
+}

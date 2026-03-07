@@ -616,11 +616,38 @@ function extractImportsFromCode(content) {
   return imports;
 }
 
+function heuristicFileSummary(relPath) {
+  const name = path.basename(relPath);
+  const ext = path.extname(relPath).toLowerCase();
+  if (name.toLowerCase().includes("readme")) return "Project documentation describing setup, usage, and repository context.";
+  if (ext === ".json") return "Structured configuration or data file used by the application.";
+  if (ext === ".md") return "Markdown document for notes, docs, or project planning.";
+  if (ext === ".ts" || ext === ".tsx") return "TypeScript source implementing typed application logic and module behavior.";
+  if (ext === ".js" || ext === ".mjs" || ext === ".cjs") return "JavaScript source implementing runtime behavior for this project.";
+  if (ext === ".py") return "Python module containing script or service logic for the repository.";
+  if (ext === ".yml" || ext === ".yaml") return "YAML configuration describing environment, workflows, or service settings.";
+  if (ext === ".css" || ext === ".scss") return "Stylesheet defining visual presentation and UI styling rules.";
+  if (ext === ".html") return "HTML template defining page structure and document layout.";
+  if (ext === ".sql") return "SQL schema or query file managing database structure or data operations.";
+  return "Repository file likely supporting application logic, configuration, or project tooling.";
+}
+
 async function summarizeFilesWithGemini(repoPath, relativePaths) {
   const summaryByPath = new Map();
   if (!GOOGLE_AI_API_KEY) {
     return summaryByPath;
   }
+
+  const summaryModels = Array.from(
+    new Set(
+      [
+        VISUALIZER_SUMMARY_MODEL,
+        process.env.GEMINI_TEXT_MODEL,
+        "gemini-2.5-flash",
+        "gemini-2.0-flash"
+      ].filter(Boolean)
+    )
+  );
 
   const prepared = [];
   for (const relPath of relativePaths) {
@@ -667,41 +694,54 @@ Rules:
 Files:
 ${JSON.stringify(batch, null, 2)}`;
 
-    const endpoint = `${GOOGLE_GENAI_BASE_URL}/models/${encodeURIComponent(
-      VISUALIZER_SUMMARY_MODEL
-    )}:generateContent`;
+    let batchApplied = false;
+    for (const model of summaryModels) {
+      const endpoint = `${GOOGLE_GENAI_BASE_URL}/models/${encodeURIComponent(model)}:generateContent`;
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GOOGLE_AI_API_KEY
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json"
+            }
+          })
+        });
 
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": GOOGLE_AI_API_KEY
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      });
+        if (!response.ok) {
+          continue;
+        }
 
-      if (!response.ok) {
-        continue;
+        const data = await response.json();
+        const text = extractTextParts(data);
+        if (!text) continue;
+
+        const parsed = parseJsonFromModelText(text);
+        const summaries = Array.isArray(parsed?.summaries) ? parsed.summaries : [];
+        for (const item of summaries) {
+          const relPath = String(item?.path || "");
+          const summary = String(item?.summary || "").trim();
+          if (relPath && summary) {
+            summaryByPath.set(relPath, summary);
+          }
+        }
+        batchApplied = summaries.length > 0;
+        if (batchApplied) break;
+      } catch {
+        // Try next model.
       }
+    }
 
-      const data = await response.json();
-      const text = extractTextParts(data);
-      if (!text) continue;
-
-      const parsed = parseJsonFromModelText(text);
-      const summaries = Array.isArray(parsed?.summaries) ? parsed.summaries : [];
-      for (const item of summaries) {
-        const relPath = String(item?.path || "");
-        const summary = String(item?.summary || "").trim();
-        if (relPath && summary) {
-          summaryByPath.set(relPath, summary);
+    if (!batchApplied) {
+      for (const item of batch) {
+        if (!summaryByPath.has(item.path)) {
+          summaryByPath.set(item.path, heuristicFileSummary(item.path));
         }
       }
-    } catch {
-      // Best-effort summaries only.
     }
   }
 
@@ -737,7 +777,7 @@ async function buildRepositoryGraph(repoPath, options = {}) {
       path: relPath,
       summary:
         summaryByPath.get(relPath) ||
-        "Gemini summary unavailable for this file in the current run."
+        heuristicFileSummary(relPath)
     });
     edges.push({ from: rootNodeId, to: relPath, type: "contains" });
   }

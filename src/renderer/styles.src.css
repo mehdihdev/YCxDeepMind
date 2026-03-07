@@ -107,6 +107,10 @@ body {
   display: block;
 }
 
+#bench.view.active {
+  height: calc(100vh - 3rem);
+}
+
 .workspace-layout {
   @apply grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)];
 }
@@ -315,7 +319,9 @@ button {
 }
 
 .code-layout {
-  @apply mt-4 grid gap-3 xl:grid-cols-[18rem_minmax(0,1fr)];
+  @apply mt-4 grid gap-3;
+  grid-template-columns: var(--code-files-width, 320px) 10px minmax(0, 1fr);
+  align-items: stretch;
 }
 
 .code-files,
@@ -324,15 +330,126 @@ button {
 }
 
 .code-files {
-  @apply max-h-[40rem] overflow-auto;
+  @apply max-h-[40rem] overflow-auto p-0;
+  background:
+    linear-gradient(180deg, rgba(8, 16, 35, 0.98) 0%, rgba(4, 10, 28, 0.98) 100%);
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.code-resizer {
+  width: 10px;
+  cursor: col-resize;
+  align-self: stretch;
+  border-radius: 999px;
+  border: 1px solid rgba(71, 104, 150, 0.75);
+  background:
+    linear-gradient(180deg, rgba(37, 67, 112, 0.35) 0%, rgba(56, 96, 153, 0.72) 100%);
+  box-shadow: inset 0 0 0 1px rgba(11, 20, 36, 0.42);
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.code-resizer::before {
+  content: "";
+  display: block;
+  width: 2px;
+  height: 56px;
+  margin: calc(50% - 28px) auto 0;
+  border-radius: 999px;
+  background: rgba(194, 221, 255, 0.65);
+}
+
+.code-resizer:hover,
+.code-resizer.dragging {
+  border-color: rgba(107, 168, 234, 0.95);
+  background:
+    linear-gradient(180deg, rgba(68, 113, 175, 0.5) 0%, rgba(88, 144, 218, 0.9) 100%);
+}
+
+.code-resizer.dragging {
+  transform: scaleX(1.08);
 }
 
 .code-files h4 {
-  @apply mb-3 text-xs uppercase tracking-[0.18em] text-slate-300;
+  @apply m-0 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-300;
 }
 
 .code-file-btn {
   @apply w-full rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-left text-xs text-slate-200;
+}
+
+.code-explorer-header {
+  @apply sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-slate-950/95 px-3 py-2;
+  left: 0;
+  right: 0;
+}
+
+.code-explorer-menu {
+  @apply rounded-md border-none bg-transparent px-2 py-0.5 text-xs tracking-widest text-slate-400 hover:bg-slate-800 hover:text-slate-100;
+}
+
+.code-root-name {
+  @apply sticky top-[37px] z-10 border-b border-slate-800 bg-sky-950/30 px-3 py-1.5 text-[13px] font-semibold tracking-wide text-slate-200;
+  left: 0;
+  right: 0;
+}
+
+.code-tree {
+  @apply mt-0 list-none p-1;
+  overflow-x: hidden;
+}
+
+.code-tree li {
+  @apply m-0 block list-none border-none bg-transparent p-0;
+  align-items: initial;
+  justify-content: initial;
+  gap: 0;
+  border-radius: 0;
+}
+
+.tree-children {
+  @apply m-0 ml-1.5 list-none border-l border-slate-700/70 pl-1;
+  overflow-x: hidden;
+}
+
+.tree-node .hidden {
+  display: none !important;
+}
+
+.tree-dir-btn,
+.code-file-btn.tree-file-btn {
+  all: unset;
+  box-sizing: border-box;
+  @apply flex w-full cursor-pointer items-center gap-1.5 rounded-[4px] bg-transparent py-1 pr-1.5 text-left text-[12.5px] text-slate-200;
+  line-height: 1.25rem;
+  padding-left: calc(6px + (var(--tree-depth, 0) * 14px));
+  max-width: 100%;
+}
+
+.tree-dir-btn {
+  @apply font-medium;
+}
+
+.tree-dir-btn:hover,
+.code-file-btn.tree-file-btn:hover {
+  @apply bg-slate-800/60 text-slate-50;
+}
+
+.code-file-btn.tree-file-btn.active {
+  @apply bg-slate-700/55 text-slate-50;
+}
+
+.tree-chevron {
+  @apply inline-flex w-3 shrink-0 justify-center text-slate-400;
+}
+
+.tree-file-badge {
+  @apply inline-flex min-w-4 shrink-0 items-center justify-center rounded px-0.5 text-[9.5px] font-semibold text-amber-200;
+  background: rgba(133, 102, 35, 0.25);
+}
+
+.tree-label {
+  @apply truncate;
 }
 
 .monaco-editor {
@@ -341,6 +458,47 @@ button {
   overflow: hidden;
   border-radius: 0.9rem;
   border: 1px solid rgba(51, 65, 85, 0.9);
+}
+
+.code-editor-wrap {
+  @apply min-h-[40rem];
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.code-editor-topbar {
+  @apply mb-2 flex items-start justify-between gap-2;
+}
+
+.code-editor-actions {
+  @apply grid gap-2;
+}
+
+.compact-btn {
+  @apply rounded-lg px-3 py-1.5 text-xs font-medium;
+  min-height: 30px;
+}
+
+.terminal-resizer {
+  display: none;
+}
+
+.code-terminal {
+  display: none;
+}
+
+.terminal-xterm {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.code-terminal-header {
+  @apply flex items-center justify-between border-b border-slate-800 px-3 py-2;
+}
+
+.code-terminal-header h4 {
+  @apply m-0 text-[11px] uppercase tracking-[0.16em] text-slate-300;
 }
 
 .output {
@@ -354,29 +512,102 @@ code,
 }
 
 .robot-workspace {
-  @apply grid min-h-[calc(100vh-9rem)] items-start gap-4 xl:grid-cols-[20rem_minmax(0,1fr)_21rem];
+  @apply grid min-h-[calc(100vh-9rem)] items-start gap-5 xl:grid-cols-[24rem_minmax(0,1fr)];
 }
 
 .robot-rail {
-  @apply grid max-h-[min(82vh,960px)] min-h-0 content-start gap-4 overflow-y-auto pr-1;
+  @apply grid min-h-0 content-start gap-4 pr-1;
+}
+
+.robot-left-rail,
+.robot-right-rail {
+  @apply rounded-2xl border border-slate-800/70 bg-slate-950/35 p-2;
+}
+
+.robot-left-rail {
+  @apply max-h-[min(84vh,980px)] overflow-y-auto;
 }
 
 .robot-panel {
-  @apply bg-slate-900/92;
+  @apply rounded-2xl border border-slate-800/80 bg-linear-to-b from-slate-900/95 to-slate-950/95 p-5 shadow-xl shadow-slate-950/35 transition-all duration-200;
+}
+
+.robot-panel:hover {
+  @apply border-slate-700/90;
+}
+
+#robot .card h3 {
+  @apply text-[1.05rem] tracking-tight text-slate-100;
+}
+
+#robot .card p {
+  @apply text-sm leading-6;
+}
+
+#robot .settings-eyebrow {
+  @apply mb-2 block text-[11px] tracking-[0.22em];
+}
+
+#robot .storage-badge {
+  @apply border-sky-500/35 bg-sky-500/10 text-sky-100;
+}
+
+#robot .stack-form {
+  @apply gap-2.5;
+}
+
+#robot input,
+#robot select,
+#robot textarea {
+  @apply rounded-xl border border-slate-700 bg-slate-950/85 px-3 py-2.5 text-sm text-slate-100 outline-none transition;
+}
+
+#robot input::placeholder,
+#robot textarea::placeholder {
+  @apply text-slate-500;
+}
+
+#robot input:focus,
+#robot select:focus,
+#robot textarea:focus {
+  @apply border-sky-400/70 ring-2 ring-sky-500/20;
+}
+
+#robot .actions {
+  @apply flex flex-wrap gap-2;
+}
+
+#robot button {
+  @apply rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2 text-sm font-medium text-slate-100 transition-all duration-150;
+}
+
+#robot button:hover {
+  @apply -translate-y-px border-sky-500/70 bg-slate-800;
+}
+
+#robot button.secondary-action {
+  @apply border-slate-700/90 bg-transparent text-slate-200;
+}
+
+#robot button.secondary-action:hover {
+  @apply border-cyan-400/60 bg-cyan-500/10 text-cyan-100;
 }
 
 .robot-repo-stack {
-  @apply mt-4 rounded-2xl border border-slate-700 bg-slate-950/70 p-4;
+  @apply mt-3 rounded-2xl border border-slate-700/80 bg-slate-950/80 p-4;
 }
 
 .robot-graph-panel {
-  @apply min-h-[calc(82vh)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden;
+  @apply min-h-[calc(84vh)] rounded-2xl border border-slate-800/90 bg-linear-to-b from-slate-900/95 to-slate-950/95 p-5 grid-rows-[auto_minmax(0,1fr)] overflow-hidden shadow-xl shadow-slate-950/35;
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .robot-graph-canvas {
-  @apply w-full rounded-2xl border border-slate-800 bg-slate-950/90;
+  @apply w-full rounded-2xl border border-slate-800/90 bg-slate-950/90;
+  background-image:
+    radial-gradient(circle at 14% 16%, rgba(56, 189, 248, 0.11), transparent 35%),
+    radial-gradient(circle at 85% 8%, rgba(14, 165, 233, 0.08), transparent 30%);
 }
 
 .robot-graph-canvas {
@@ -387,19 +618,19 @@ code,
 }
 
 .robot-summary-grid {
-  @apply mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3;
+  @apply mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3;
 }
 
 .robot-stat {
-  @apply rounded-2xl border border-slate-800 bg-slate-950/70 p-3;
+  @apply rounded-xl border border-slate-800/90 bg-slate-950/80 p-3;
 }
 
 .robot-stat-label {
-  @apply text-[11px] uppercase tracking-[0.18em] text-slate-400;
+  @apply text-[10px] uppercase tracking-[0.18em] text-slate-400;
 }
 
 .robot-stat-value {
-  @apply mt-2 text-2xl font-semibold text-slate-50;
+  @apply mt-1.5 text-2xl font-semibold text-slate-50;
 }
 
 .robot-board-list,
@@ -413,12 +644,12 @@ code,
 .robot-list-card,
 .robot-option-card,
 .robot-detail-card {
-  @apply rounded-2xl border border-slate-800 bg-slate-950/75 p-4;
+  @apply rounded-xl border border-slate-800/90 bg-slate-950/80 p-4;
 }
 
 .robot-list-card.active,
 .robot-option-card.selected {
-  @apply border-sky-500 ring-1 ring-sky-500/35;
+  @apply border-sky-500/90 ring-1 ring-sky-500/35;
 }
 
 .robot-board-card h4,
@@ -465,6 +696,23 @@ code,
 .robot-option-card a,
 .robot-detail-card a {
   @apply text-sky-300 underline-offset-2 hover:underline;
+}
+
+.robot-rail::-webkit-scrollbar {
+  width: 10px;
+}
+
+.robot-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.robot-rail::-webkit-scrollbar-thumb {
+  @apply rounded-full border-2 border-transparent bg-slate-700/80;
+  background-clip: content-box;
+}
+
+.robot-rail::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-500/90;
 }
 
 .robot-swatch {
@@ -539,6 +787,11 @@ code,
     @apply grid-cols-1;
   }
 
+  .robot-left-rail,
+  .robot-right-rail {
+    @apply p-0 border-0 bg-transparent;
+  }
+
   .robot-graph-canvas {
     min-height: 34rem;
     height: 60vh;
@@ -555,12 +808,136 @@ code,
   }
 
   .workspace-layout,
-  .code-layout,
   .team-grid {
     @apply grid-cols-1;
+  }
+
+  .code-layout {
+    grid-template-columns: minmax(220px, 34%) 8px minmax(0, 1fr);
   }
 
   .topbar {
     @apply flex-col items-start;
   }
+}
+
+body.bench-mode .app-shell {
+  grid-template-columns: 1fr;
+}
+
+body.bench-mode .sidebar,
+body.bench-mode .topbar {
+  display: none;
+}
+
+body.bench-mode .content {
+  padding: 0;
+  min-height: calc(100vh - 3rem);
+}
+
+body.code-only-workspace .app-shell {
+  grid-template-columns: 1fr;
+}
+
+body.code-only-workspace .sidebar,
+body.code-only-workspace .topbar {
+  display: none;
+}
+
+body.code-only-workspace .content {
+  padding: 0;
+  min-height: calc(100vh - 3rem);
+}
+
+body.code-only-workspace .view {
+  display: none !important;
+}
+
+body.code-only-workspace #code.view {
+  display: block !important;
+  height: calc(100vh - 3rem);
+  padding: 0;
+}
+
+body.code-only-workspace #code > .card.full {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  background: #050b18;
+}
+
+body.code-only-workspace #code > .card.full > h3,
+body.code-only-workspace #code > .card.full > p,
+body.code-only-workspace #code-load-form,
+body.code-only-workspace .code-files,
+body.code-only-workspace #code-resizer {
+  display: none;
+}
+
+body.code-only-workspace .code-layout {
+  margin-top: 0;
+  gap: 0;
+  height: 100%;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.code-only-workspace .code-editor-wrap {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: #050b18;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) 8px var(--terminal-height, 260px);
+}
+
+body.code-only-workspace .code-editor-topbar {
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid #1a2940;
+  background: #0a1323;
+}
+
+body.code-only-workspace .code-editor-actions {
+  display: none;
+}
+
+body.code-only-workspace .monaco-editor {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+body.code-only-workspace .terminal-resizer {
+  display: block;
+  height: 8px;
+  cursor: row-resize;
+  border-top: 1px solid #244064;
+  border-bottom: 1px solid #244064;
+  background: linear-gradient(
+    180deg,
+    rgba(44, 82, 130, 0.45) 0%,
+    rgba(67, 114, 175, 0.82) 100%
+  );
+}
+
+body.code-only-workspace .terminal-resizer.dragging,
+body.code-only-workspace .terminal-resizer:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(76, 133, 206, 0.55) 0%,
+    rgba(103, 167, 245, 0.95) 100%
+  );
+}
+
+body.code-only-workspace .code-terminal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-top: 1px solid #1a2940;
+  background: #030a16;
 }

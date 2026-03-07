@@ -69,6 +69,7 @@ const codeLayout = document.querySelector(".code-layout");
 const codeEditorWrap = document.querySelector(".code-editor-wrap");
 const codeResizer = document.getElementById("code-resizer");
 const codeFileList = document.getElementById("code-file-list");
+const codeRootName = document.getElementById("code-root-name");
 const codeEditorMeta = document.getElementById("code-editor-meta");
 const monacoMount = document.getElementById("monaco-editor");
 const codeTerminal = document.getElementById("code-terminal");
@@ -147,6 +148,7 @@ let terminalInstance = null;
 let terminalFitAddon = null;
 let terminalStarted = false;
 let terminalEchoLocalInput = false;
+let currentRobotWorkspace = null;
 let currentTeamState = {
   storage: "unknown",
   teams: [],
@@ -157,6 +159,8 @@ let currentTeamState = {
 };
 
 function setActiveView(viewId) {
+  document.body.classList.toggle("bench-mode", viewId === "bench" && !isCodeOnlyWorkspace);
+
   navButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === viewId);
   });
@@ -180,7 +184,10 @@ function setStatus(message, isError = false) {
 
 function setCodePaneWidth(px) {
   if (!codeLayout) return;
-  const clamped = Math.max(220, Math.min(620, Number(px) || 320));
+  const layoutWidth = codeLayout.getBoundingClientRect().width || 1200;
+  const minWidth = 220;
+  const maxWidth = Math.max(320, Math.floor(layoutWidth - 320));
+  const clamped = Math.max(minWidth, Math.min(maxWidth, Number(px) || 320));
   codeLayout.style.setProperty("--code-files-width", `${clamped}px`);
   localStorage.setItem("forge_code_files_width", String(clamped));
 }
@@ -525,6 +532,55 @@ function updateRobotRepoMeta(fullName) {
   }`;
 }
 
+function getActiveRobotSource() {
+  const sourceMode = localStorage.getItem("forge_robot_source_mode") || "";
+  const repoFullName =
+    String(robotRepoSelect?.value || localStorage.getItem("forge_selected_robot_repo") || "").trim();
+  const folderPath = String(localStorage.getItem("forge_selected_robot_folder") || "").trim();
+
+  if (sourceMode === "folder" && folderPath) {
+    return {
+      mode: "folder",
+      payload: { sourcePath: folderPath },
+      label: folderPath
+    };
+  }
+
+  if (sourceMode === "repo" && repoFullName) {
+    return {
+      mode: "repo",
+      payload: { repoFullName },
+      label: repoFullName
+    };
+  }
+
+  if (repoFullName && !folderPath) {
+    return {
+      mode: "repo",
+      payload: { repoFullName },
+      label: repoFullName
+    };
+  }
+
+  if (folderPath) {
+    return {
+      mode: "folder",
+      payload: { sourcePath: folderPath },
+      label: folderPath
+    };
+  }
+
+  if (repoFullName) {
+    return {
+      mode: "repo",
+      payload: { repoFullName },
+      label: repoFullName
+    };
+  }
+
+  return null;
+}
+
 function renderArtifactRepoSelector() {
   if (!artifactRepoSelect) return;
 
@@ -725,6 +781,25 @@ function inferLanguage(filePath) {
   return "plaintext";
 }
 
+function inferFileBadge(filePath) {
+  const lower = String(filePath || "").toLowerCase();
+  if (lower.endsWith(".js") || lower.endsWith(".mjs") || lower.endsWith(".cjs")) return "JS";
+  if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "TS";
+  if (lower.endsWith(".jsx")) return "JSX";
+  if (lower.endsWith(".json")) return "{}";
+  if (lower.endsWith(".md")) return "i";
+  if (lower.endsWith(".css") || lower.endsWith(".scss")) return "#";
+  if (lower.endsWith(".html")) return "<>";
+  if (lower.endsWith(".sql")) return "DB";
+  if (lower.endsWith(".env")) return "⚙";
+  return "•";
+}
+
+function setCodeRootLabel(label) {
+  if (!codeRootName) return;
+  codeRootName.textContent = String(label || "PROJECT ROOT").toUpperCase();
+}
+
 async function ensureMonacoLoaded() {
   if (monacoLoaded) return true;
   if (!monacoMount) return false;
@@ -790,17 +865,36 @@ async function ensureMermaidLoaded() {
 }
 
 async function ensureVisNetworkLoaded() {
-  if (visLoaded) return true;
+  const resolveVisApi = () =>
+    window.vis || window.visNetwork || window["vis-network"] || null;
+
+  const existingApi = resolveVisApi();
+  if (existingApi?.Network) {
+    visLoaded = true;
+    return true;
+  }
+
   try {
     await new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-vis-network="1"]');
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("vis-network failed to load")), {
+          once: true
+        });
+        return;
+      }
+
       const script = document.createElement("script");
+      script.dataset.visNetwork = "1";
       script.src = "https://unpkg.com/vis-network/standalone/umd/vis-network.min.js";
       script.onload = resolve;
       script.onerror = reject;
       document.head.appendChild(script);
     });
-    visLoaded = true;
-    return true;
+    const api = resolveVisApi();
+    visLoaded = Boolean(api?.Network);
+    return visLoaded;
   } catch {
     return false;
   }
@@ -809,7 +903,8 @@ async function ensureVisNetworkLoaded() {
 async function renderRepositoryGraph(graphData) {
   if (!visualizerGraphMount) return;
   const ok = await ensureVisNetworkLoaded();
-  if (!ok || !window.vis?.Network) {
+  const visApi = window.vis || window.visNetwork || window["vis-network"];
+  if (!ok || !visApi?.Network || !visApi?.DataSet) {
     if (visualizerStats) {
       visualizerStats.textContent =
         "Could not load graph renderer. Check internet connection and try again.";
@@ -844,8 +939,8 @@ async function renderRepositoryGraph(graphData) {
   });
 
   const dataset = {
-    nodes: new window.vis.DataSet(nodes),
-    edges: new window.vis.DataSet(
+    nodes: new visApi.DataSet(nodes),
+    edges: new visApi.DataSet(
       edges.map((edge) => ({
         from: edge.from,
         to: edge.to,
@@ -862,7 +957,7 @@ async function renderRepositoryGraph(graphData) {
     visNetwork.destroy();
   }
 
-  visNetwork = new window.vis.Network(visualizerGraphMount, dataset, {
+  visNetwork = new visApi.Network(visualizerGraphMount, dataset, {
     autoResize: true,
     layout: {
       improvedLayout: true
@@ -1015,7 +1110,6 @@ function renderCodeTreeLevel(node, mount, depth = 0) {
     toggle.style.setProperty("--tree-depth", String(depth));
     toggle.innerHTML = `
       <span class="tree-chevron">${expanded ? "▾" : "▸"}</span>
-      <span class="tree-folder">📁</span>
       <span class="tree-label">${dir.name}</span>
     `;
     li.appendChild(toggle);
@@ -1028,11 +1122,13 @@ function renderCodeTreeLevel(node, mount, depth = 0) {
   });
 
   files.forEach((file) => {
+    const isActive = file.path === currentCodeFilePath;
+    const badge = inferFileBadge(file.path);
     const li = document.createElement("li");
     li.className = "tree-node";
     li.innerHTML = `
-      <button type="button" class="code-file-btn tree-file-btn" data-code-file="${file.path}" style="--tree-depth:${depth}">
-        <span class="tree-file">📄</span>
+      <button type="button" class="code-file-btn tree-file-btn${isActive ? " active" : ""}" data-code-file="${file.path}" style="--tree-depth:${depth}">
+        <span class="tree-file-badge">${badge}</span>
         <span class="tree-label">${file.name}</span>
       </button>
     `;
@@ -1065,6 +1161,7 @@ async function loadCodeTreeByPath(repoPath) {
   currentCodeSource = "local";
   currentCodeFilePath = "";
   renderCodeFiles(data.files || []);
+  setCodeRootLabel(data.repoPath.split("/").filter(Boolean).pop() || "PROJECT ROOT");
   if (codeEditorMeta) {
     codeEditorMeta.textContent = `Loaded ${data.files.length} files from ${data.repoPath}`;
   }
@@ -1113,6 +1210,7 @@ async function loadCodeFile(filePath) {
       }
     }
     currentCodeFilePath = data.filePath;
+    renderCodeFiles(currentCodeFiles, { preserveExpansion: true });
     setStatus(`Opened ${filePath}`);
   } catch (err) {
     setStatus(err.message, true);
@@ -1395,6 +1493,9 @@ if (robotRepoSelect) {
   robotRepoSelect.addEventListener("change", () => {
     const selected = robotRepoSelect.value;
     localStorage.setItem("forge_selected_robot_repo", selected);
+    if (selected) {
+      localStorage.setItem("forge_robot_source_mode", "repo");
+    }
     updateRobotRepoMeta(selected);
   });
 }
@@ -2066,6 +2167,7 @@ refreshSession()
           currentCodeRepoPath = "";
           currentCodeFilePath = "";
           renderCodeFiles(data.files || []);
+          setCodeRootLabel((data.repoFullName || "PROJECT ROOT").split("/").pop());
           const ok = await ensureMonacoLoaded();
           if (ok && monacoEditor) {
             monacoEditor.updateOptions({ readOnly: true });
@@ -2135,6 +2237,64 @@ document.addEventListener("click", (event) => {
     const fileButton = target.closest("[data-code-file]");
     if (fileButton instanceof HTMLElement && fileButton.dataset.codeFile) {
       loadCodeFile(fileButton.dataset.codeFile);
+    }
+  }
+
+  if (target instanceof HTMLElement) {
+    const discoverButton = target.closest("[data-discover-requirement]");
+    if (discoverButton instanceof HTMLElement && discoverButton.dataset.discoverRequirement) {
+      const requirementId = discoverButton.dataset.discoverRequirement;
+      const activeSource = getActiveRobotSource();
+      if (!activeSource) {
+        setStatus("Select a repo or folder first", true);
+        return;
+      }
+
+      apiJson(`/api/robot/requirements/${requirementId}/discover`, {
+        method: "POST",
+        body: JSON.stringify(activeSource.payload)
+      })
+        .then((data) => {
+          currentRobotWorkspace = data.workspace || currentRobotWorkspace;
+          renderRequirementList(data.workspace?.requirements || currentRobotWorkspace?.requirements || []);
+          renderRobotOptionList(data.workspace || currentRobotWorkspace, requirementId);
+          setStatus("Requirement options updated");
+        })
+        .catch((err) => {
+          setStatus(err.message, true);
+        });
+      return;
+    }
+  }
+
+  if (target instanceof HTMLElement) {
+    const selectOptionButton = target.closest("[data-select-option]");
+    if (selectOptionButton instanceof HTMLElement && selectOptionButton.dataset.selectOption) {
+      const [requirementId, optionId] = selectOptionButton.dataset.selectOption.split(":");
+      if (!requirementId || !optionId) return;
+      const activeSource = getActiveRobotSource();
+      if (!activeSource) {
+        setStatus("Select a repo or folder first", true);
+        return;
+      }
+
+      apiJson(`/api/robot/requirements/${requirementId}/select`, {
+        method: "POST",
+        body: JSON.stringify({
+          ...activeSource.payload,
+          optionId
+        })
+      })
+        .then((data) => {
+          currentRobotWorkspace = data.workspace || currentRobotWorkspace;
+          renderRequirementList(data.workspace?.requirements || currentRobotWorkspace?.requirements || []);
+          renderRobotOptionList(data.workspace || currentRobotWorkspace, requirementId);
+          setStatus("Option selected");
+        })
+        .catch((err) => {
+          setStatus(err.message, true);
+        });
+      return;
     }
   }
 
@@ -2215,39 +2375,38 @@ window.addEventListener("beforeunload", () => {
 // Robot page event handlers (inline version)
 if (robotRefreshButton) {
   robotRefreshButton.addEventListener("click", async () => {
-    const repoFullName = robotRepoSelect?.value || localStorage.getItem("forge_selected_robot_repo") || "";
-    const folderPath = localStorage.getItem("forge_selected_robot_folder") || "";
-
-    if (!repoFullName && !folderPath) {
+    const activeSource = getActiveRobotSource();
+    if (!activeSource) {
       setStatus("Select a repo or folder first", true);
       return;
     }
 
     try {
       setStatus("Syncing robot workspace...");
-      const payload = repoFullName ? { repoFullName } : { sourcePath: folderPath };
       const data = await apiJson("/api/robot/workspace/sync", {
         method: "POST",
-        body: JSON.stringify(payload)
+        body: JSON.stringify(activeSource.payload)
       });
       const nodeCount = data.workspace?.graph?.nodes?.length || 0;
       setStatus(`Robot workspace synced - ${nodeCount} components`);
 
       // Update source badge
       if (robotSourceBadge) {
-        robotSourceBadge.textContent = repoFullName ? "Source: repo" : "Source: folder";
+        robotSourceBadge.textContent = activeSource.mode === "repo" ? "Source: repo" : "Source: folder";
       }
 
       // Update graph meta
       if (robotGraphMeta) {
-        robotGraphMeta.textContent = `${repoFullName || folderPath} • ${nodeCount} nodes`;
+        robotGraphMeta.textContent = `${activeSource.label} • ${nodeCount} nodes`;
       }
 
       // Render the robot graph
       await renderRobotGraph(data.workspace);
 
-      // Render requirements list
+      // Render requirements + options
+      currentRobotWorkspace = data.workspace || null;
       renderRequirementList(data.workspace?.requirements);
+      renderRobotOptionList(data.workspace);
 
       // Update discovered components panel
       if (robotDiscoveredComponents && data.workspace?.graph?.nodes) {
@@ -2292,20 +2451,12 @@ async function renderRobotGraph(workspace) {
     return;
   }
 
-  // Load vis-network if needed
-  if (!window.vis?.Network) {
-    try {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "https://unpkg.com/vis-network/standalone/umd/vis-network.min.js";
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    } catch {
-      robotGraphMount.innerHTML = '<div class="robot-graph-empty"><p>Could not load graph renderer.</p></div>';
-      return;
-    }
+  const ok = await ensureVisNetworkLoaded();
+  const visApi = window.vis || window.visNetwork || window["vis-network"];
+  if (!ok || !visApi?.Network) {
+    robotGraphMount.innerHTML =
+      '<div class="robot-graph-empty"><p>Could not load graph renderer.</p></div>';
+    return;
   }
 
   robotGraphMount.innerHTML = "";
@@ -2344,7 +2495,7 @@ async function renderRobotGraph(workspace) {
       arrows: { to: { enabled: true, scaleFactor: 0.6 } }
     }));
 
-  new window.vis.Network(robotGraphMount, { nodes: visNodes, edges: visEdges }, {
+  new visApi.Network(robotGraphMount, { nodes: visNodes, edges: visEdges }, {
     autoResize: true,
     interaction: { hover: true, tooltipDelay: 200 },
     physics: { enabled: true, solver: "forceAtlas2Based" }
@@ -2378,6 +2529,52 @@ function renderRequirementList(requirements) {
       </div>
     </article>`;
   }).join("");
+}
+
+function renderRobotOptionList(workspace, focusRequirementId = "") {
+  if (!robotOptionList) return;
+
+  const requirements = workspace?.requirements || [];
+  const requirement =
+    requirements.find((item) => item.id === focusRequirementId) ||
+    requirements.find((item) => Array.isArray(item.options) && item.options.length > 0);
+
+  if (!requirement) {
+    robotOptionList.innerHTML =
+      '<div class="robot-list-card"><p class="muted">No part options yet. Click "Discover Options" on a requirement.</p></div>';
+    return;
+  }
+
+  const options = Array.isArray(requirement.options) ? requirement.options : [];
+  if (!options.length) {
+    robotOptionList.innerHTML =
+      `<div class="robot-list-card"><p class="muted">Requirement "${requirement.title}" has no options yet.</p></div>`;
+    return;
+  }
+
+  robotOptionList.innerHTML = options
+    .map((option) => {
+      const selected = Boolean(option.selected);
+      const score = Number(option.score || 0);
+      return `
+        <article class="robot-option-card ${selected ? "selected" : ""}" data-option-id="${option.id}">
+          <h4>${option.title || "Untitled option"}</h4>
+          <p class="muted">${option.fitSummary || option.excerpt || "No summary provided."}</p>
+          <p class="robot-node-meta">Score: ${score}</p>
+          ${
+            option.url
+              ? `<p class="robot-node-meta"><a href="${option.url}" target="_blank" rel="noreferrer">Open source</a></p>`
+              : ""
+          }
+          <div class="actions mt-3">
+            <button type="button" data-select-option="${requirement.id}:${option.id}">
+              ${selected ? "Selected" : "Select Option"}
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 // Helper function to update Live Bench visibility
@@ -2448,8 +2645,10 @@ if (robotOpenFolderButton) {
       // Render the robot graph
       await renderRobotGraph(data.workspace);
 
-      // Render requirements list
+      // Render requirements + options
+      currentRobotWorkspace = data.workspace || null;
       renderRequirementList(data.workspace?.requirements);
+      renderRobotOptionList(data.workspace);
 
       // Update discovered components panel
       if (robotDiscoveredComponents && data.workspace?.graph?.nodes) {
@@ -2489,21 +2688,18 @@ if (robotRequirementForm) {
       return;
     }
 
-    const repoFullName = robotRepoSelect?.value || localStorage.getItem("forge_selected_robot_repo") || "";
-    const folderPath = localStorage.getItem("forge_selected_robot_folder") || "";
-
-    if (!repoFullName && !folderPath) {
+    const activeSource = getActiveRobotSource();
+    if (!activeSource) {
       setStatus("Select a repo or folder first", true);
       return;
     }
 
     try {
       setStatus("Creating requirement...");
-      const payload = repoFullName ? { repoFullName } : { sourcePath: folderPath };
       const data = await apiJson("/api/robot/requirements", {
         method: "POST",
         body: JSON.stringify({
-          ...payload,
+          ...activeSource.payload,
           title: title || description,
           description,
           capability: `${title} ${description}`.trim()
@@ -2512,8 +2708,10 @@ if (robotRequirementForm) {
       robotRequirementForm.reset();
       setStatus("Requirement created");
 
-      // Render updated requirements list
+      // Render updated requirements + options
+      currentRobotWorkspace = data.workspace || currentRobotWorkspace;
       renderRequirementList(data.workspace?.requirements || [data.requirement].filter(Boolean));
+      renderRobotOptionList(data.workspace || currentRobotWorkspace);
     } catch (err) {
       setStatus(err.message, true);
     }

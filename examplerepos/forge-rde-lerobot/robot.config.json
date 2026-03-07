@@ -1,87 +1,86 @@
 {
+  "generatedAt": "2026-03-07T23:10:58.311Z",
+  "generatedBy": "forge-rde",
   "robot": {
-    "name": "Forge LeRobot Station",
-    "type": "so100",
-    "description": "LeRobot SO-100 arm with optional ELEGOO car base"
+    "name": "forge-rde-lerobot",
+    "type": "manipulator"
   },
-
   "jetson": {
     "ip": "192.168.1.100",
-    "ssh_user": "jetson",
-    "ssh_key": "~/.ssh/id_rsa",
-    "workspace": "~/forge-lerobot"
+    "user": "jetson"
   },
-
-  "arms": {
-    "leader": {
-      "enabled": true,
-      "device": "/dev/ttyACM0",
-      "baudrate": 1000000,
-      "protocol": "dynamixel",
-      "motors": {
-        "ids": [1, 2, 3, 4, 5, 6],
-        "model": "sts3215"
-      },
-      "calibration": "./calibration/leader.json"
-    },
-    "follower": {
-      "enabled": true,
-      "device": "/dev/ttyACM1",
-      "baudrate": 1000000,
-      "protocol": "dynamixel",
-      "motors": {
-        "ids": [1, 2, 3, 4, 5, 6],
-        "model": "sts3215"
-      },
-      "calibration": "./calibration/follower.json"
-    }
-  },
-
-  "cameras": [
-    {
-      "id": "top",
-      "name": "Top Camera",
-      "device": "/dev/video0",
-      "resolution": [640, 480],
-      "fps": 30,
-      "encoding": "mjpeg",
-      "enabled": true
-    },
-    {
-      "id": "wrist",
-      "name": "Wrist Camera",
-      "device": "/dev/video2",
-      "resolution": [640, 480],
-      "fps": 30,
-      "encoding": "mjpeg",
-      "enabled": false
-    }
-  ],
-
   "servers": {
     "arm": {
-      "host": "0.0.0.0",
       "port": 8765,
-      "protocol": "websocket"
+      "enabled": true
     },
     "camera": {
-      "host": "0.0.0.0",
       "port": 8766,
-      "protocol": "websocket"
+      "enabled": false
     }
   },
-
-  "recording": {
-    "fps": 50,
-    "format": "lerobot-v2",
-    "output_dir": "~/lerobot-datasets",
-    "include_cameras": ["top"],
-    "include_joints": true
-  },
-
-  "teleoperation": {
-    "mode": "leader-follower",
-    "smoothing": 0.8,
-    "deadzone": 5
-  }
+  "arms": [
+    {
+      "id": "source:folder:file:calibration/follower.json",
+      "name": "follower.json",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:calibration/leader.json",
+      "name": "leader.json",
+      "type": "leader"
+    },
+    {
+      "id": "source:folder:file:forge-integration/robot-graph-schema.json",
+      "name": "robot-graph-schema.json",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:jetson/arm_server.py",
+      "name": "arm_server.py",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:jetson/camera_server.py",
+      "name": "camera_server.py",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:jetson/requirements.txt",
+      "name": "requirements.txt",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:README.md",
+      "name": "README.md",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:robot.config.json",
+      "name": "robot.config.json",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:scripts/discover_devices.py",
+      "name": "discover_devices.py",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:scripts/install.sh",
+      "name": "install.sh",
+      "type": "follower"
+    },
+    {
+      "id": "source:folder:file:scripts/start-servers.sh",
+      "name": "start-servers.sh",
+      "type": "follower"
+    }
+  ],
+  "cameras": [],
+  "selectedParts": [
+    {
+      "name": "ESP32 Wi-Fi &amp; Bluetooth SoC | Espressif Systems",
+      "requirement": "esp 32"
+    }
+  ]
 }
