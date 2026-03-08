@@ -10,12 +10,13 @@ interface LiveCameraFeedProps {
   host: string;
   port: number;
   onConnectionChange?: (connected: boolean) => void;
+  onCanvasReady?: (canvas: HTMLCanvasElement | null) => void;
   autoConnect?: boolean;
   overlay?: React.ReactNode;
   compact?: boolean;
 }
 
-export function LiveCameraFeed({ host, port, onConnectionChange, autoConnect = false, overlay, compact = false }: LiveCameraFeedProps) {
+export function LiveCameraFeed({ host, port, onConnectionChange, onCanvasReady, autoConnect = false, overlay, compact = false }: LiveCameraFeedProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [cameras, setCameras] = useState<Record<string, CameraInfo>>({});
@@ -135,6 +136,16 @@ export function LiveCameraFeed({ host, port, onConnectionChange, autoConnect = f
       }
     };
   }, []);
+
+  // Notify when first camera canvas is ready
+  useEffect(() => {
+    if (isConnected && canvasRefs.current.size > 0) {
+      const firstCanvas = canvasRefs.current.values().next().value;
+      onCanvasReady?.(firstCanvas || null);
+    } else {
+      onCanvasReady?.(null);
+    }
+  }, [isConnected, cameras, onCanvasReady]);
 
   const cameraIds = Object.keys(cameras).map(Number).sort();
 

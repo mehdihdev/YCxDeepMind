@@ -18,6 +18,11 @@ import { useRecording } from './hooks/useRecording';
 import { ResizableSplit } from './components/ResizableSplit';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { JointOverlay } from './components/JointOverlay';
+import { OvershootVisionPanel } from './components/OvershootVisionPanel';
+import { TrajectoryPlayer } from './components/TrajectoryPlayer';
+import { GeminiAgentPanel } from './components/GeminiAgentPanel';
+import { OvershootAgentPanel } from './components/OvershootAgentPanel';
+import { DebugCapture } from './components/DebugCapture';
 
 // Joint configurations for different robot types
 const ARM_JOINTS = [
@@ -50,11 +55,8 @@ function getUrlParams() {
   };
 }
 
-// Default to arm joints for backwards compatibility
-const JOINTS = ARM_JOINTS;
-
 // Scene configs for different robot types
-function getSceneConfig(robotType: string, carType: string): SceneConfig {
+function getSceneConfig(robotType: string, _carType: string): SceneConfig {
   if (robotType === 'car') {
     return {
       src: '/bench/robot/',
@@ -202,6 +204,22 @@ function App() {
   const [orbitEnabled, setOrbitEnabled] = useState(true);
   const cameraRefs = useRef<Map<string, VirtualCameraHandle>>(new Map());
 
+  // Trajectory Player
+  const [showTrajectory, setShowTrajectory] = useState(false);
+  const [trajectoryPlaying, setTrajectoryPlaying] = useState(false);
+  const [currentWaypointName, setCurrentWaypointName] = useState<string>('');
+
+  // Overshoot Vision
+  const [showOvershoot, setShowOvershoot] = useState(false);
+  const [liveCameraCanvas, setLiveCameraCanvas] = useState<HTMLCanvasElement | null>(null);
+
+  // Gemini Agent
+  const [showGeminiAgent, setShowGeminiAgent] = useState(false);
+  const mujocoCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Overshoot Agent
+  const [showOvershootAgent, setShowOvershootAgent] = useState(false);
+
   // Recording
   const [showRecording, setShowRecording] = useState(false);
   const getCameraCapture = useCallback((cameraId: string) => {
@@ -223,6 +241,21 @@ function App() {
   useEffect(() => {
     localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(cameras));
   }, [cameras]);
+
+  // Capture MuJoCo canvas ref after mount
+  useEffect(() => {
+    const findCanvas = () => {
+      // MuJoCo canvas is rendered by Three.js - find it in the DOM
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        mujocoCanvasRef.current = canvas;
+      }
+    };
+    // Wait for render then find canvas
+    const timer = setTimeout(findCanvas, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
 
   // Connect to Jetson WebSocket
   const connectToJetson = useCallback(() => {
@@ -897,6 +930,84 @@ function App() {
               />
             )}
           </div>
+
+          {/* Trajectory Demos Section (sim and bench mode) */}
+          {(mode === 'sim' || mode === 'bench') && (
+            <div style={{ borderBottom: '1px solid #333' }}>
+              <div
+                style={{
+                  padding: 16,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setShowTrajectory(!showTrajectory)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: '#06b6d4', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    Trajectory Demos
+                  </span>
+                  {trajectoryPlaying && (
+                    <span style={{
+                      padding: '2px 6px',
+                      borderRadius: 8,
+                      fontSize: 9,
+                      background: 'rgba(6, 182, 212, 0.2)',
+                      color: '#06b6d4',
+                    }}>
+                      {currentWaypointName}
+                    </span>
+                  )}
+                </div>
+                <span style={{ color: '#666', fontSize: 10 }}>{showTrajectory ? '▲' : '▼'}</span>
+              </div>
+              {showTrajectory && (
+                <TrajectoryPlayer
+                  onJointUpdate={(joints) => {
+                    setJointValues(joints);
+                    if (teleop.enabled) {
+                      sendJointPositions(joints);
+                    }
+                  }}
+                  onPlayStateChange={(playing, waypointName) => {
+                    setTrajectoryPlaying(playing);
+                    setCurrentWaypointName(waypointName);
+                  }}
+                  isConnected={connectionStatus === 'connected'}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Overshoot Vision Section (bench mode only) */}
+          {mode === 'bench' && (
+            <div style={{ borderBottom: '1px solid #333' }}>
+              <div
+                style={{
+                  padding: 16,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setShowOvershoot(!showOvershoot)}
+              >
+                <span style={{ color: '#8b5cf6', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Overshoot Vision
+                </span>
+                <span style={{ color: '#666', fontSize: 10 }}>{showOvershoot ? '▲' : '▼'}</span>
+              </div>
+              {showOvershoot && (
+                <div style={{ padding: '0 12px 12px' }}>
+                  <OvershootVisionPanel
+                    cameraCanvas={liveCameraCanvas}
+                    defaultPrompt="Track the pick and place task: Is the gripper holding an object? Where is it moving? Has it placed the object?"
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -1044,6 +1155,7 @@ function App() {
                   host={jetsonHost}
                   port={cameraPort}
                   onConnectionChange={setLiveCameraConnected}
+                  onCanvasReady={setLiveCameraCanvas}
                   autoConnect
                   overlay={
                     <JointOverlay
@@ -1134,6 +1246,7 @@ function App() {
                   host={jetsonHost}
                   port={cameraPort}
                   onConnectionChange={setLiveCameraConnected}
+                  onCanvasReady={setLiveCameraCanvas}
                   autoConnect
                 />
               </div>
@@ -1151,6 +1264,80 @@ function App() {
             isTeleopEnabled={teleop.enabled}
             followerConnected={teleop.followerConnected}
           />
+        )}
+
+        {/* AI Agents Panel - Right Side */}
+        {(mode === 'sim' || mode === 'bench') && (
+          <div style={{
+            position: 'absolute',
+            top: 16,
+            right: 16,
+            width: 280,
+            maxHeight: 'calc(100vh - 100px)',
+            overflow: 'auto',
+            background: 'rgba(26, 26, 26, 0.95)',
+            borderRadius: 12,
+            border: '1px solid #333',
+            zIndex: 20,
+          }}>
+            {/* Overshoot Agent */}
+            <div style={{ borderBottom: '1px solid #333' }}>
+              <div
+                style={{
+                  padding: 12,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setShowOvershootAgent(!showOvershootAgent)}
+              >
+                <span style={{ color: '#06b6d4', fontSize: 11, fontWeight: 600 }}>
+                  Overshoot Agent
+                </span>
+                <span style={{ color: '#666', fontSize: 10 }}>{showOvershootAgent ? '▲' : '▼'}</span>
+              </div>
+              {showOvershootAgent && (
+                <OvershootAgentPanel
+                  onJointUpdate={(joints) => {
+                    setJointValues(joints);
+                    if (teleop.enabled) sendJointPositions(joints);
+                  }}
+                  cameraRefs={cameraRefs}
+                  cameras={cameras}
+                />
+              )}
+            </div>
+
+            {/* Gemini Agent */}
+            <div>
+              <div
+                style={{
+                  padding: 12,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setShowGeminiAgent(!showGeminiAgent)}
+              >
+                <span style={{ color: '#ec4899', fontSize: 11, fontWeight: 600 }}>
+                  Gemini Agent
+                </span>
+                <span style={{ color: '#666', fontSize: 10 }}>{showGeminiAgent ? '▲' : '▼'}</span>
+              </div>
+              {showGeminiAgent && (
+                <GeminiAgentPanel
+                  onJointUpdate={(joints) => {
+                    setJointValues(joints);
+                    if (teleop.enabled) sendJointPositions(joints);
+                  }}
+                  cameraRefs={cameraRefs}
+                  cameras={cameras}
+                />
+              )}
+            </div>
+          </div>
         )}
 
         {/* Mode Badge */}
@@ -1224,6 +1411,11 @@ function App() {
           Drag to orbit · Scroll to zoom · Right-click to pan
         </div>
       </div>
+
+      {/* Debug Capture - for testing */}
+      {mode === 'sim' && cameras.length > 0 && (
+        <DebugCapture cameraRefs={cameraRefs} cameras={cameras} />
+      )}
 
       <style>{`
         @keyframes pulse {
