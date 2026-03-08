@@ -1,86 +1,71 @@
 /*
- * Forge RDE - ELEGOO Smart Car V4.0 Firmware
+ * Forge RDE - ELEGOO Smart Robot Car V4.0 Firmware
  *
- * Serial protocol for communication with car_server.py
- * Handles: Motor control, servo, ultrasonic, IR sensors
+ * This sketch keeps the Forge RDE serial protocol, but the wiring and control
+ * layout follow the official ELEGOO Smart Robot Car V4.0 TB6612 tutorial code.
  *
- * Commands (newline terminated):
- *   MOTOR <left> <right>  - Set motor speeds (-255 to 255)
- *   SERVO <angle>         - Set ultrasonic servo (0-180)
- *   ULTRASONIC            - Read ultrasonic distance (returns cm)
- *   IR_LINE               - Read line sensors (returns l,c,r)
- *   IR_OBSTACLE           - Read obstacle sensors (returns l,r)
- *   STATE                 - Get full state JSON
- *   STOP                  - Emergency stop
+ * Supported newline-terminated commands:
+ *   MOTOR <left> <right>   Set left/right side speeds (-255..255)
+ *   DRIVE <fwd> <turn>     Arcade drive command (-255..255 each)
+ *   SERVO <angle>          Set ultrasonic pan servo (0..180)
+ *   ULTRASONIC             Read ultrasonic distance in cm
+ *   IR_LINE                Read line sensors (left,center,right)
+ *   IR_OBSTACLE            Compatibility shim, returns 0,0 on default V4
+ *   VOLTAGE                Read battery estimate in volts
+ *   STATE                  Emit a JSON state snapshot
+ *   STOP                   Stop all motion
+ *   PING                   Health check
  */
 
 #include <Servo.h>
 
-// ============== PIN DEFINITIONS ==============
-// Motor Driver (L298N)
-#define ENA 5     // Left motors enable (PWM)
-#define ENB 6     // Right motors enable (PWM)
-#define IN1 7     // Left motors direction
-#define IN2 8     // Left motors direction
-#define IN3 9     // Right motors direction
-#define IN4 10    // Right motors direction
+// Official ELEGOO V4 TB6612 wiring
+#define PIN_MOTOR_PWMA 5
+#define PIN_MOTOR_PWMB 6
+#define PIN_MOTOR_AIN1 7   // Right side direction
+#define PIN_MOTOR_BIN1 8   // Left side direction
+#define PIN_MOTOR_STBY 3
 
-// Ultrasonic Sensor (HC-SR04)
-#define TRIG_PIN 12
-#define ECHO_PIN 13
+#define PIN_ULTRASONIC_TRIG 13
+#define PIN_ULTRASONIC_ECHO 12
+#define PIN_SERVO_PAN 10
 
-// Ultrasonic Servo
-#define SERVO_PIN 3
+#define PIN_LINE_LEFT A2
+#define PIN_LINE_CENTER A1
+#define PIN_LINE_RIGHT A0
+#define PIN_VOLTAGE A3
 
-// IR Line Tracking Sensors
-#define IR_LINE_LEFT A0
-#define IR_LINE_CENTER A1
-#define IR_LINE_RIGHT A2
-
-// IR Obstacle Sensors
-#define IR_OBSTACLE_LEFT 2
-#define IR_OBSTACLE_RIGHT 4
-
-// ============== GLOBALS ==============
 Servo ultrasonicServo;
 
+String inputBuffer = "";
 int leftSpeed = 0;
 int rightSpeed = 0;
 int servoAngle = 90;
 
-String inputBuffer = "";
-
-// ============== SETUP ==============
 void setup() {
   Serial.begin(115200);
 
-  // Motor pins
-  pinMode(ENA, OUTPUT);
-  pinMode(ENB, OUTPUT);
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
+  pinMode(PIN_MOTOR_PWMA, OUTPUT);
+  pinMode(PIN_MOTOR_PWMB, OUTPUT);
+  pinMode(PIN_MOTOR_AIN1, OUTPUT);
+  pinMode(PIN_MOTOR_BIN1, OUTPUT);
+  pinMode(PIN_MOTOR_STBY, OUTPUT);
 
-  // Ultrasonic pins
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
+  pinMode(PIN_ULTRASONIC_TRIG, OUTPUT);
+  pinMode(PIN_ULTRASONIC_ECHO, INPUT);
+  pinMode(PIN_LINE_LEFT, INPUT);
+  pinMode(PIN_LINE_CENTER, INPUT);
+  pinMode(PIN_LINE_RIGHT, INPUT);
+  pinMode(PIN_VOLTAGE, INPUT);
 
-  // IR obstacle pins
-  pinMode(IR_OBSTACLE_LEFT, INPUT);
-  pinMode(IR_OBSTACLE_RIGHT, INPUT);
+  ultrasonicServo.attach(PIN_SERVO_PAN);
+  ultrasonicServo.write(servoAngle);
 
-  // Servo
-  ultrasonicServo.attach(SERVO_PIN);
-  ultrasonicServo.write(90);
-
-  // Stop motors
   stopMotors();
 
-  Serial.println("ELEGOO Car Ready");
+  Serial.println("FORGE_ELEGOO_V4_READY");
 }
 
-// ============== MAIN LOOP ==============
 void loop() {
   while (Serial.available()) {
     char c = Serial.read();
@@ -95,52 +80,65 @@ void loop() {
   }
 }
 
-// ============== COMMAND PROCESSING ==============
 void processCommand(String cmd) {
   cmd.trim();
-  cmd.toUpperCase();
 
   if (cmd.startsWith("MOTOR ")) {
-    // MOTOR <left> <right>
     int firstSpace = cmd.indexOf(' ');
     int secondSpace = cmd.indexOf(' ', firstSpace + 1);
-
     if (secondSpace > firstSpace) {
-      leftSpeed = cmd.substring(firstSpace + 1, secondSpace).toInt();
-      rightSpeed = cmd.substring(secondSpace + 1).toInt();
-      setMotors(leftSpeed, rightSpeed);
+      int left = cmd.substring(firstSpace + 1, secondSpace).toInt();
+      int right = cmd.substring(secondSpace + 1).toInt();
+      setMotors(left, right);
       Serial.println("OK");
+      return;
     }
   }
-  else if (cmd.startsWith("SERVO ")) {
-    // SERVO <angle>
-    servoAngle = cmd.substring(6).toInt();
-    servoAngle = constrain(servoAngle, 0, 180);
+
+  if (cmd.startsWith("DRIVE ")) {
+    int firstSpace = cmd.indexOf(' ');
+    int secondSpace = cmd.indexOf(' ', firstSpace + 1);
+    if (secondSpace > firstSpace) {
+      int forward = cmd.substring(firstSpace + 1, secondSpace).toInt();
+      int turn = cmd.substring(secondSpace + 1).toInt();
+      setMotors(forward + turn, forward - turn);
+      Serial.println("OK");
+      return;
+    }
+  }
+
+  if (cmd.startsWith("SERVO ")) {
+    servoAngle = constrain(cmd.substring(6).toInt(), 0, 180);
     ultrasonicServo.write(servoAngle);
     Serial.println("OK");
+    return;
   }
-  else if (cmd == "ULTRASONIC") {
-    float distance = readUltrasonic();
-    Serial.println(distance);
+
+  if (cmd == "ULTRASONIC") {
+    Serial.println(readUltrasonicCm(), 1);
+    return;
   }
-  else if (cmd == "IR_LINE") {
-    int left = analogRead(IR_LINE_LEFT);
-    int center = analogRead(IR_LINE_CENTER);
-    int right = analogRead(IR_LINE_RIGHT);
-    Serial.print(left);
+
+  if (cmd == "IR_LINE") {
+    Serial.print(analogRead(PIN_LINE_LEFT));
     Serial.print(",");
-    Serial.print(center);
+    Serial.print(analogRead(PIN_LINE_CENTER));
     Serial.print(",");
-    Serial.println(right);
+    Serial.println(analogRead(PIN_LINE_RIGHT));
+    return;
   }
-  else if (cmd == "IR_OBSTACLE") {
-    int left = digitalRead(IR_OBSTACLE_LEFT);
-    int right = digitalRead(IR_OBSTACLE_RIGHT);
-    Serial.print(left);
-    Serial.print(",");
-    Serial.println(right);
+
+  if (cmd == "IR_OBSTACLE") {
+    Serial.println("0,0");
+    return;
   }
-  else if (cmd == "STATE") {
+
+  if (cmd == "VOLTAGE") {
+    Serial.println(readBatteryVoltage(), 2);
+    return;
+  }
+
+  if (cmd == "STATE") {
     Serial.print("{\"left_speed\":");
     Serial.print(leftSpeed);
     Serial.print(",\"right_speed\":");
@@ -148,79 +146,81 @@ void processCommand(String cmd) {
     Serial.print(",\"servo_angle\":");
     Serial.print(servoAngle);
     Serial.print(",\"ultrasonic\":");
-    Serial.print(readUltrasonic());
+    Serial.print(readUltrasonicCm(), 1);
+    Serial.print(",\"line\":[");
+    Serial.print(analogRead(PIN_LINE_LEFT));
+    Serial.print(",");
+    Serial.print(analogRead(PIN_LINE_CENTER));
+    Serial.print(",");
+    Serial.print(analogRead(PIN_LINE_RIGHT));
+    Serial.print("],\"voltage\":");
+    Serial.print(readBatteryVoltage(), 2);
     Serial.println("}");
+    return;
   }
-  else if (cmd == "STOP") {
+
+  if (cmd == "STOP") {
     stopMotors();
     Serial.println("OK");
+    return;
   }
-  else {
-    Serial.println("OK");
+
+  if (cmd == "PING") {
+    Serial.println("PONG");
+    return;
   }
+
+  Serial.println("ERR");
 }
 
-// ============== MOTOR CONTROL ==============
+void writeMotorChannel(uint8_t pwmPin, uint8_t dirPin, int speed) {
+  int pwm = constrain(abs(speed), 0, 255);
+  digitalWrite(dirPin, speed >= 0 ? HIGH : LOW);
+  analogWrite(pwmPin, pwm);
+}
+
 void setMotors(int left, int right) {
-  // Left motors
-  if (left > 0) {
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-    analogWrite(ENA, constrain(left, 0, 255));
-  } else if (left < 0) {
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, HIGH);
-    analogWrite(ENA, constrain(-left, 0, 255));
-  } else {
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
-    analogWrite(ENA, 0);
+  leftSpeed = constrain(left, -255, 255);
+  rightSpeed = constrain(right, -255, 255);
+
+  if (leftSpeed == 0 && rightSpeed == 0) {
+    stopMotors();
+    return;
   }
 
-  // Right motors
-  if (right > 0) {
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
-    analogWrite(ENB, constrain(right, 0, 255));
-  } else if (right < 0) {
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, HIGH);
-    analogWrite(ENB, constrain(-right, 0, 255));
-  } else {
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, LOW);
-    analogWrite(ENB, 0);
-  }
+  digitalWrite(PIN_MOTOR_STBY, HIGH);
+
+  // ELEGOO V4 TB6612 mapping:
+  //   A channel -> right side, B channel -> left side
+  writeMotorChannel(PIN_MOTOR_PWMB, PIN_MOTOR_BIN1, leftSpeed);
+  writeMotorChannel(PIN_MOTOR_PWMA, PIN_MOTOR_AIN1, rightSpeed);
 }
 
 void stopMotors() {
   leftSpeed = 0;
   rightSpeed = 0;
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, LOW);
-  analogWrite(ENA, 0);
-  analogWrite(ENB, 0);
+  analogWrite(PIN_MOTOR_PWMA, 0);
+  analogWrite(PIN_MOTOR_PWMB, 0);
+  digitalWrite(PIN_MOTOR_STBY, LOW);
 }
 
-// ============== ULTRASONIC SENSOR ==============
-float readUltrasonic() {
-  // Send trigger pulse
-  digitalWrite(TRIG_PIN, LOW);
+float readUltrasonicCm() {
+  digitalWrite(PIN_ULTRASONIC_TRIG, LOW);
   delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
+  digitalWrite(PIN_ULTRASONIC_TRIG, HIGH);
   delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
+  digitalWrite(PIN_ULTRASONIC_TRIG, LOW);
 
-  // Read echo
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout
-
+  long duration = pulseIn(PIN_ULTRASONIC_ECHO, HIGH, 30000);
   if (duration == 0) {
-    return 400.0; // Max distance if no echo
+    return 150.0;
   }
 
-  // Calculate distance in cm
-  float distance = duration * 0.034 / 2.0;
-  return constrain(distance, 0, 400);
+  float distance = duration / 58.0;
+  return constrain(distance, 0.0, 150.0);
+}
+
+float readBatteryVoltage() {
+  float voltage = analogRead(PIN_VOLTAGE) * 0.0375;
+  return voltage + (voltage * 0.08);
 }

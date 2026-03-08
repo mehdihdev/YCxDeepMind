@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, type CSSProperties } from 'react';
 import {
   MujocoProvider,
   MujocoCanvas,
@@ -18,6 +18,8 @@ import { useRecording } from './hooks/useRecording';
 import { ResizableSplit } from './components/ResizableSplit';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { JointOverlay } from './components/JointOverlay';
+import { CarDrivePad } from './components/CarDrivePad';
+import { CarLiveOverlay } from './components/CarLiveOverlay';
 
 // Joint configurations for different robot types
 const ARM_JOINTS = [
@@ -50,11 +52,8 @@ function getUrlParams() {
   };
 }
 
-// Default to arm joints for backwards compatibility
-const JOINTS = ARM_JOINTS;
-
 // Scene configs for different robot types
-function getSceneConfig(robotType: string, carType: string): SceneConfig {
+function getSceneConfig(robotType: string, _carType: string): SceneConfig {
   if (robotType === 'car') {
     return {
       src: '/bench/robot/',
@@ -70,10 +69,86 @@ function getSceneConfig(robotType: string, carType: string): SceneConfig {
   };
 }
 
-const DEFAULT_JETSON_HOST = '10.0.0.42';
+const DEFAULT_JETSON_HOST = typeof window !== 'undefined'
+  ? (window.location.hostname || '127.0.0.1')
+  : '127.0.0.1';
 const DEFAULT_JETSON_PORT = 8765;
 const DEFAULT_CAMERA_PORT = 8766;
 const CAMERA_STORAGE_KEY = 'forge-rde-cameras';
+const CAR_SIM_SPEED_LIMIT = 50;
+const CAR_SERVER_SPEED_LIMIT = 255;
+const CAR_SCAN_ANGLES = [0, 30, 60, 90, 120, 150, 180];
+
+interface CarState {
+  leftSpeed: number;
+  rightSpeed: number;
+  servoAngle: number;
+  ultrasonicDistance: number;
+  irLine: number[];
+  irObstacle: boolean[];
+  autonomousMode: boolean;
+  recording: boolean;
+  playback: boolean;
+}
+
+interface ScanPoint {
+  angle: number;
+  distance: number;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function servoDegreesToRadians(angle: number) {
+  return ((clamp(angle, 0, 180) - 90) / 90) * (Math.PI / 2);
+}
+
+function servoRadiansToDegrees(angle: number) {
+  return Math.round(clamp((angle / (Math.PI / 2)) * 90 + 90, 0, 180));
+}
+
+function simSpeedToServer(value: number) {
+  return Math.round((clamp(value, -CAR_SIM_SPEED_LIMIT, CAR_SIM_SPEED_LIMIT) / CAR_SIM_SPEED_LIMIT) * CAR_SERVER_SPEED_LIMIT);
+}
+
+function serverSpeedToSim(value: number) {
+  return (clamp(value, -CAR_SERVER_SPEED_LIMIT, CAR_SERVER_SPEED_LIMIT) / CAR_SERVER_SPEED_LIMIT) * CAR_SIM_SPEED_LIMIT;
+}
+
+function jointValuesToDrive(jointValues: number[]) {
+  const left = (jointValues[0] + jointValues[2]) / 2;
+  const right = (jointValues[1] + jointValues[3]) / 2;
+  return { left, right, servo: jointValues[4] ?? 0 };
+}
+
+function carStateToJointValues(state: CarState) {
+  const left = serverSpeedToSim(state.leftSpeed);
+  const right = serverSpeedToSim(state.rightSpeed);
+  return [left, right, left, right, servoDegreesToRadians(state.servoAngle)];
+}
+
+const sensorCardStyle: CSSProperties = {
+  padding: '10px 12px',
+  borderRadius: 10,
+  background: '#111',
+  border: '1px solid #222',
+};
+
+const sensorLabelStyle: CSSProperties = {
+  color: '#666',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: 0.8,
+  marginBottom: 6,
+};
+
+const sensorValueStyle: CSSProperties = {
+  color: '#e5e7eb',
+  fontSize: 13,
+  fontWeight: 600,
+  fontFamily: 'monospace',
+};
 
 function useJointController(jointValues: number[], joints: typeof ARM_JOINTS) {
   const ctrls = joints.map(j => useCtrl(j.name));
@@ -173,6 +248,7 @@ function App() {
 
   const [jointValues, setJointValues] = useState<number[]>(activeJoints.map(j => j.default));
   const [actualJointValues, setActualJointValues] = useState<number[]>(activeJoints.map(j => j.default));
+  const [simResetNonce, setSimResetNonce] = useState(0);
   const [mode, setMode] = useState<AppMode>('sim');
   const [rawPositions, setRawPositions] = useState<Record<string, number>>({});
 
@@ -190,6 +266,20 @@ function App() {
 
   // Teleoperation state
   const [teleop, setTeleop] = useState<TeleopState>({ enabled: false, followerConnected: false });
+  const [carState, setCarState] = useState<CarState>({
+    leftSpeed: 0,
+    rightSpeed: 0,
+    servoAngle: 90,
+    ultrasonicDistance: 150,
+    irLine: [0, 0, 0],
+    irObstacle: [false, false],
+    autonomousMode: false,
+    recording: false,
+    playback: false,
+  });
+  const [ultrasonicScan, setUltrasonicScan] = useState<ScanPoint[]>([]);
+  const [carDriveSpeed, setCarDriveSpeed] = useState(0.55);
+  const showCarRealtimeControls = robotType === 'car' && (mode === 'real' || mode === 'bench');
 
   // Camera system
   const [cameras, setCameras] = useState<VirtualCameraConfig[]>(() => {
@@ -242,6 +332,10 @@ function App() {
       console.log('Connected to Jetson');
       setConnectionStatus('connected');
       setReconnectAttempts(0);
+      if (robotType === 'car') {
+        ws.send(JSON.stringify({ type: 'get_state' }));
+        ws.send(JSON.stringify({ type: 'scan', angles: CAR_SCAN_ANGLES }));
+      }
     };
 
     ws.onmessage = (event) => {
@@ -289,6 +383,30 @@ function App() {
             enabled: data.enabled ?? false,
             followerConnected: data.follower_connected ?? false,
           });
+        } else if (data.type === 'state' && robotType === 'car') {
+          const nextState: CarState = {
+            leftSpeed: data.left_speed ?? 0,
+            rightSpeed: data.right_speed ?? 0,
+            servoAngle: data.servo_angle ?? 90,
+            ultrasonicDistance: data.ultrasonic_distance ?? 150,
+            irLine: Array.isArray(data.ir_line) ? data.ir_line : [0, 0, 0],
+            irObstacle: Array.isArray(data.ir_obstacle) ? data.ir_obstacle : [false, false],
+            autonomousMode: Boolean(data.autonomous_mode),
+            recording: Boolean(data.recording),
+            playback: Boolean(data.playback),
+          };
+          setCarState(nextState);
+          const realValues = carStateToJointValues(nextState);
+          if (mode === 'real') {
+            setJointValues(realValues);
+          }
+          if (mode === 'bench') {
+            setActualJointValues(realValues);
+          }
+        } else if (data.type === 'scan_result' && robotType === 'car') {
+          setUltrasonicScan(Array.isArray(data.data) ? data.data : []);
+        } else if (data.type === 'autonomous_status' && robotType === 'car') {
+          setCarState((previous) => ({ ...previous, autonomousMode: Boolean(data.enabled) }));
         }
       } catch (e) {
         console.error('Failed to parse message:', e);
@@ -315,7 +433,7 @@ function App() {
     };
 
     wsRef.current = ws;
-  }, [jetsonHost, jetsonPort, mode, reconnectAttempts]);
+  }, [jetsonHost, jetsonPort, mode, reconnectAttempts, robotType, activeJoints]);
 
   const disconnectFromJetson = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -371,6 +489,40 @@ function App() {
     }));
   }, [teleop.enabled, activeJoints]);
 
+  const sendCarState = useCallback((positions: number[]) => {
+    if (robotType !== 'car' || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    const drive = jointValuesToDrive(positions);
+    wsRef.current.send(JSON.stringify({
+      type: 'set_velocity',
+      left: simSpeedToServer(drive.left),
+      right: simSpeedToServer(drive.right),
+    }));
+    wsRef.current.send(JSON.stringify({
+      type: 'set_servo',
+      angle: servoRadiansToDegrees(drive.servo),
+    }));
+  }, [robotType]);
+
+  const applyCarJointValues = useCallback((positions: number[], syncRobot: boolean) => {
+    setJointValues(positions);
+    if (mode === 'bench') {
+      // Intended state is left panel. Actual state remains driven by live feedback.
+      setActualJointValues((previous) => previous.length ? previous : positions);
+    }
+    if (syncRobot) {
+      sendCarState(positions);
+    }
+  }, [mode, sendCarState]);
+
+  const requestUltrasonicScan = useCallback(() => {
+    if (robotType !== 'car' || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({
+      type: 'scan',
+      angles: CAR_SCAN_ANGLES,
+    }));
+  }, [robotType]);
+
   // Teleop: toggle enable
   const toggleTeleop = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -382,21 +534,55 @@ function App() {
   }, [teleop.enabled]);
 
   const handleJointChange = useCallback((index: number, value: number) => {
-    if (mode === 'sim' || mode === 'bench') {
+    const canEditCarInMode = robotType === 'car' && (mode === 'sim' || mode === 'bench' || mode === 'real');
+    if (mode === 'sim' || mode === 'bench' || canEditCarInMode) {
       setJointValues(prev => {
         const next = [...prev];
         next[index] = value;
-        // Send to follower if teleop enabled
-        if (teleop.enabled) {
+        if (robotType === 'car') {
+          if (mode === 'real' || mode === 'bench') {
+            sendCarState(next);
+          }
+        } else if (teleop.enabled) {
           sendJointPositions(next);
         }
         return next;
       });
     }
-  }, [mode, teleop.enabled, sendJointPositions]);
+  }, [mode, robotType, teleop.enabled, sendCarState, sendJointPositions]);
+
+  const handleCarDrive = useCallback((forwardPercent: number, turnPercent: number) => {
+    const driveScale = carDriveSpeed * CAR_SIM_SPEED_LIMIT;
+    const left = clamp((forwardPercent + turnPercent) * driveScale, -CAR_SIM_SPEED_LIMIT, CAR_SIM_SPEED_LIMIT);
+    const right = clamp((forwardPercent - turnPercent) * driveScale, -CAR_SIM_SPEED_LIMIT, CAR_SIM_SPEED_LIMIT);
+    const next = [left, right, left, right, jointValues[4] ?? 0];
+    applyCarJointValues(next, mode !== 'sim');
+  }, [applyCarJointValues, carDriveSpeed, jointValues, mode]);
+
+  const handleCarStop = useCallback(() => {
+    const next = [0, 0, 0, 0, jointValues[4] ?? 0];
+    applyCarJointValues(next, mode !== 'sim');
+  }, [applyCarJointValues, jointValues, mode]);
+
+  const handleCarServoDegrees = useCallback((angle: number) => {
+    const next = [...jointValues];
+    next[4] = servoDegreesToRadians(angle);
+    applyCarJointValues(next, mode !== 'sim');
+  }, [applyCarJointValues, jointValues, mode]);
+
+  const toggleCarAutonomous = useCallback(() => {
+    if (robotType !== 'car' || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({
+      type: 'set_autonomous',
+      enabled: !carState.autonomousMode,
+    }));
+  }, [carState.autonomousMode, robotType]);
 
   const resetJoints = useCallback(() => {
-    setJointValues(activeJoints.map(j => j.default));
+    const home = activeJoints.map(j => j.default);
+    setJointValues(home);
+    setActualJointValues(home);
+    setSimResetNonce((current) => current + 1);
   }, [activeJoints]);
 
   // Camera handlers
@@ -529,19 +715,24 @@ function App() {
                 bench: 'Bench',
                 calibrate: 'Cal',
               };
+              const disabled = robotType === 'car' && m === 'calibrate';
               return (
                 <button
                   key={m}
-                  onClick={() => setMode(m)}
+                  onClick={() => {
+                    if (!disabled) setMode(m);
+                  }}
+                  disabled={disabled}
                   style={{
                     padding: '8px 0',
                     border: 'none',
                     borderRadius: 6,
                     fontSize: 10,
                     fontWeight: 500,
-                    cursor: 'pointer',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
                     background: mode === m ? colors[m] : 'transparent',
-                    color: mode === m ? '#fff' : '#888',
+                    color: disabled ? '#444' : mode === m ? '#fff' : '#888',
+                    opacity: disabled ? 0.5 : 1,
                   }}
                 >
                   {labels[m]}
@@ -603,7 +794,9 @@ function App() {
                   </div>
                   <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
                     <div style={{ flex: 1 }}>
-                      <label style={{ color: '#888', fontSize: 10, display: 'block', marginBottom: 4 }}>Arm Port</label>
+                      <label style={{ color: '#888', fontSize: 10, display: 'block', marginBottom: 4 }}>
+                        {robotType === 'car' ? 'Control Port' : 'Arm Port'}
+                      </label>
                       <input
                         type="number"
                         value={jetsonPort}
@@ -714,49 +907,95 @@ function App() {
                 </span>
               </div>
 
-              {/* Teleop controls */}
               <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #333' }}>
-                <div style={{ color: '#666', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 1 }}>
-                  Teleoperation
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <div style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: teleop.followerConnected ? '#10b981' : '#666',
-                  }} />
-                  <span style={{ color: '#888', fontSize: 11 }}>
-                    Follower: {teleop.followerConnected ? 'Connected' : 'Not connected'}
-                  </span>
-                </div>
-                <button
-                  onClick={toggleTeleop}
-                  disabled={!teleop.followerConnected || connectionStatus !== 'connected'}
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    border: 'none',
-                    borderRadius: 6,
-                    background: teleop.enabled
-                      ? 'linear-gradient(135deg, #ef4444, #dc2626)'
-                      : teleop.followerConnected
-                        ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)'
-                        : '#333',
-                    color: teleop.followerConnected ? '#fff' : '#666',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: teleop.followerConnected ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  {teleop.enabled ? 'Stop Teleop' : 'Enable Teleop'}
-                </button>
-                {teleop.enabled && (
-                  <p style={{ color: '#8b5cf6', fontSize: 10, marginTop: 6, textAlign: 'center' }}>
-                    Move sliders to control follower arm
-                  </p>
+                {robotType !== 'car' && (
+                  <>
+                    <div style={{ color: '#666', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 1 }}>
+                      Teleoperation
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <div style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: teleop.followerConnected ? '#10b981' : '#666',
+                      }} />
+                      <span style={{ color: '#888', fontSize: 11 }}>
+                        Follower: {teleop.followerConnected ? 'Connected' : 'Not connected'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={toggleTeleop}
+                      disabled={!teleop.followerConnected || connectionStatus !== 'connected'}
+                      style={{
+                        width: '100%',
+                        padding: 10,
+                        border: 'none',
+                        borderRadius: 6,
+                        background: teleop.enabled
+                          ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+                          : teleop.followerConnected
+                            ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)'
+                            : '#333',
+                        color: teleop.followerConnected ? '#fff' : '#666',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: teleop.followerConnected ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      {teleop.enabled ? 'Stop Teleop' : 'Enable Teleop'}
+                    </button>
+                    {teleop.enabled && (
+                      <p style={{ color: '#8b5cf6', fontSize: 10, marginTop: 6, textAlign: 'center' }}>
+                        Move sliders to control follower arm
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
+            </div>
+          )}
+
+          {showCarRealtimeControls && (
+            <div style={{ padding: 16, borderBottom: '1px solid #333' }}>
+              <div style={{ color: '#666', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', marginBottom: 12, letterSpacing: 1 }}>
+                Car Controls
+              </div>
+              <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: connectionStatus === 'connected' ? '#10b981' : '#666',
+                }} />
+                <span style={{ color: '#888', fontSize: 11 }}>
+                  Control: {connectionStatus === 'connected' ? `ws://${jetsonHost}:${jetsonPort}` : 'Disconnected'}
+                </span>
+              </div>
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: liveCameraConnected ? '#10b981' : '#666',
+                }} />
+                <span style={{ color: '#888', fontSize: 11 }}>
+                  Camera: {liveCameraConnected ? `ws://${jetsonHost}:${cameraPort}` : 'No live feed'}
+                </span>
+              </div>
+              <CarDrivePad
+                enabled={mode === 'bench' || connectionStatus === 'connected'}
+                speedPercent={carDriveSpeed}
+                servoAngle={servoRadiansToDegrees(jointValues[4] ?? 0)}
+                autonomousEnabled={carState.autonomousMode}
+                onSpeedChange={setCarDriveSpeed}
+                onDrive={handleCarDrive}
+                onStop={handleCarStop}
+                onServoChange={handleCarServoDegrees}
+                onScan={requestUltrasonicScan}
+                onCenterServo={() => handleCarServoDegrees(90)}
+                onToggleAutonomous={toggleCarAutonomous}
+              />
             </div>
           )}
 
@@ -781,6 +1020,7 @@ function App() {
                 const displayValue = robotType === 'car' && joint.name !== 'ultrasonic_servo'
                   ? Math.round(jointValues[i]) // Show velocity for car motors
                   : Math.round((jointValues[i] / Math.PI) * 180); // Show degrees for arm/servo
+                const canEditJoint = mode === 'sim' || mode === 'bench' || (robotType === 'car' && mode === 'real');
                 return (
                   <div key={joint.name} style={{ marginBottom: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -801,7 +1041,7 @@ function App() {
                         transition: mode === 'real' ? 'width 0.05s ease-out' : 'none',
                       }} />
                     </div>
-                    {(mode === 'sim' || mode === 'bench') && (
+                    {canEditJoint && (
                       <input
                         type="range"
                         min={joint.min}
@@ -821,6 +1061,36 @@ function App() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {robotType === 'car' && (
+            <div style={{ padding: 16, borderBottom: '1px solid #333' }}>
+              <div style={{ color: '#666', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', marginBottom: 12, letterSpacing: 1 }}>
+                Live Sensors
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                <div style={sensorCardStyle}>
+                  <div style={sensorLabelStyle}>Ultrasonic</div>
+                  <div style={{ ...sensorValueStyle, color: carState.ultrasonicDistance < 40 ? '#f59e0b' : '#10b981' }}>
+                    {carState.ultrasonicDistance.toFixed(1)} cm
+                  </div>
+                </div>
+                <div style={sensorCardStyle}>
+                  <div style={sensorLabelStyle}>Servo</div>
+                  <div style={sensorValueStyle}>{Math.round(carState.servoAngle)}°</div>
+                </div>
+                <div style={sensorCardStyle}>
+                  <div style={sensorLabelStyle}>Line Sensors</div>
+                  <div style={sensorValueStyle}>{carState.irLine.join(' / ')}</div>
+                </div>
+                <div style={sensorCardStyle}>
+                  <div style={sensorLabelStyle}>Obstacle</div>
+                  <div style={{ ...sensorValueStyle, color: carState.irObstacle.some(Boolean) ? '#ef4444' : '#10b981' }}>
+                    {carState.irObstacle.some(Boolean) ? 'Detected' : 'Clear'}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -903,20 +1173,27 @@ function App() {
         <div style={{ padding: 16, borderTop: '1px solid #333' }}>
           <button
             onClick={() => {
+              const home = activeJoints.map(j => j.default);
               resetJoints();
-              if (teleop.enabled) sendJointPositions(activeJoints.map(j => j.default));
+              if (robotType === 'car') {
+                if (mode === 'real' || mode === 'bench') {
+                  sendCarState(home);
+                }
+              } else if (teleop.enabled) {
+                sendJointPositions(home);
+              }
             }}
-            disabled={mode !== 'sim' && mode !== 'bench'}
+            disabled={!(mode === 'sim' || mode === 'bench' || (robotType === 'car' && mode === 'real'))}
             style={{
               width: '100%',
               padding: 10,
               border: 'none',
               borderRadius: 8,
-              background: (mode !== 'sim' && mode !== 'bench') ? '#333' : '#0ea5e9',
-              color: (mode !== 'sim' && mode !== 'bench') ? '#666' : '#fff',
+              background: (!(mode === 'sim' || mode === 'bench' || (robotType === 'car' && mode === 'real'))) ? '#333' : '#0ea5e9',
+              color: (!(mode === 'sim' || mode === 'bench' || (robotType === 'car' && mode === 'real'))) ? '#666' : '#fff',
               fontSize: 13,
               fontWeight: 500,
-              cursor: (mode !== 'sim' && mode !== 'bench') ? 'not-allowed' : 'pointer',
+              cursor: (!(mode === 'sim' || mode === 'bench' || (robotType === 'car' && mode === 'real'))) ? 'not-allowed' : 'pointer',
               marginBottom: 8,
             }}
           >
@@ -928,7 +1205,11 @@ function App() {
                 j.min + Math.random() * (j.max - j.min) * 0.6 + (j.max - j.min) * 0.2
               );
               setJointValues(newPositions);
-              if (teleop.enabled) sendJointPositions(newPositions);
+              if (robotType === 'car') {
+                if (mode === 'bench') sendCarState(newPositions);
+              } else if (teleop.enabled) {
+                sendJointPositions(newPositions);
+              }
             }}
             disabled={mode !== 'sim' && mode !== 'bench'}
             style={{
@@ -987,7 +1268,7 @@ function App() {
             maxRatio={0.75}
             left={
               <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-                <MujocoProvider>
+                <MujocoProvider key={`bench-split-${simResetNonce}`}>
                   <MujocoCanvas
                     config={config}
                     camera={{
@@ -1028,14 +1309,15 @@ function App() {
                 }}>
                   Intended (Sim)
                 </div>
-                {/* Joint overlay on sim */}
-                <JointOverlay
-                  joints={activeJoints}
-                  positions={jointValues}
-                  side="left"
-                  label="Target"
-                  color="#0ea5e9"
-                />
+                {robotType !== 'car' && (
+                  <JointOverlay
+                    joints={activeJoints}
+                    positions={jointValues}
+                    side="left"
+                    label="Target"
+                    color="#0ea5e9"
+                  />
+                )}
               </div>
             }
             right={
@@ -1045,7 +1327,14 @@ function App() {
                   port={cameraPort}
                   onConnectionChange={setLiveCameraConnected}
                   autoConnect
-                  overlay={
+                  overlay={robotType === 'car' ? (
+                    <CarLiveOverlay
+                      state={carState}
+                      scanResults={ultrasonicScan}
+                      intendedLeft={simSpeedToServer(jointValuesToDrive(jointValues).left)}
+                      intendedRight={simSpeedToServer(jointValuesToDrive(jointValues).right)}
+                    />
+                  ) : (
                     <JointOverlay
                       joints={activeJoints}
                       positions={actualJointValues}
@@ -1053,7 +1342,7 @@ function App() {
                       label="Actual"
                       color="#10b981"
                     />
-                  }
+                  )}
                 />
                 {/* Actual Panel Label */}
                 <div style={{
@@ -1078,13 +1367,13 @@ function App() {
           <>
             {/* Non-split layouts */}
             {/* Simulation Panel - show unless cameras-only in bench mode */}
-            {!(mode === 'bench' && viewLayout === 'cameras-only') && (
+            {!(mode === 'bench' && viewLayout === 'cameras-only') && !(mode === 'real' && robotType === 'car') && (
               <div style={{
                 flex: 1,
                 position: 'relative',
                 minWidth: 0,
               }}>
-                <MujocoProvider>
+                <MujocoProvider key={`bench-single-${simResetNonce}`}>
                   <MujocoCanvas
                     config={config}
                     camera={{
@@ -1122,7 +1411,7 @@ function App() {
             )}
 
             {/* Live Camera Panel - cameras-only mode */}
-            {mode === 'bench' && viewLayout === 'cameras-only' && (
+            {((mode === 'bench' && viewLayout === 'cameras-only') || (mode === 'real' && robotType === 'car')) && (
               <div style={{
                 flex: 1,
                 position: 'relative',
@@ -1135,6 +1424,15 @@ function App() {
                   port={cameraPort}
                   onConnectionChange={setLiveCameraConnected}
                   autoConnect
+                  overlay={robotType === 'car' ? (
+                    <CarLiveOverlay
+                      state={carState}
+                      scanResults={ultrasonicScan}
+                      intendedLeft={simSpeedToServer(jointValuesToDrive(jointValues).left)}
+                      intendedRight={simSpeedToServer(jointValuesToDrive(jointValues).right)}
+                      compact
+                    />
+                  ) : undefined}
                 />
               </div>
             )}
@@ -1142,7 +1440,7 @@ function App() {
         )}
 
         {/* Diagnostics Panel - show in bench mode with split view */}
-        {mode === 'bench' && viewLayout === 'split' && (
+        {mode === 'bench' && viewLayout === 'split' && robotType !== 'car' && (
           <DiagnosticsPanel
             joints={activeJoints}
             intendedPositions={jointValues}
@@ -1221,7 +1519,9 @@ function App() {
           color: '#555',
           fontFamily: 'system-ui, sans-serif',
         }}>
-          Drag to orbit · Scroll to zoom · Right-click to pan
+          {robotType === 'car'
+            ? 'Use Drive Control for sim, real, or both · Drag to orbit · Scroll to zoom'
+            : 'Drag to orbit · Scroll to zoom · Right-click to pan'}
         </div>
       </div>
 

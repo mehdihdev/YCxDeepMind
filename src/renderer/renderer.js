@@ -171,6 +171,10 @@ function setActiveView(viewId) {
   });
 
   title.textContent = labels[viewId] || "Forge RDE";
+
+  if (viewId === "bench") {
+    syncBenchSelectionFromCurrentSource();
+  }
 }
 
 function setStatus(message, isError = false) {
@@ -1396,6 +1400,7 @@ if (robotRepoSelect) {
     const selected = robotRepoSelect.value;
     localStorage.setItem("forge_selected_robot_repo", selected);
     updateRobotRepoMeta(selected);
+    syncBenchSelectionFromCurrentSource();
   });
 }
 
@@ -2252,22 +2257,33 @@ if (robotRefreshButton) {
       // Update discovered components panel
       if (robotDiscoveredComponents && data.workspace?.graph?.nodes) {
         const nodes = data.workspace.graph.nodes;
+        const sourceHint = `${repoFullName || folderPath || ""}`.toLowerCase();
         const hasJetson = nodes.some(n => (n.label || "").toLowerCase().includes("jetson") || (n.componentLabel || "").toLowerCase().includes("compute"));
         const hasArm = nodes.some(n => (n.label || "").toLowerCase().includes("arm") || (n.componentLabel || "").toLowerCase().includes("arm"));
         const hasCamera = nodes.some(n => (n.label || "").toLowerCase().includes("camera"));
+        const hasCar = sourceHint.includes("elegoo") || nodes.some((n) => {
+          const label = `${n.label || ""} ${(n.componentLabel || "")}`.toLowerCase();
+          return label.includes("elegoo") || label.includes("smart car") || label.includes("wheel") || label.includes("ultrasonic");
+        });
 
-        if (hasJetson || hasArm || hasCamera) {
+        if (hasJetson || hasArm || hasCamera || hasCar) {
           const items = [];
           if (hasJetson) items.push("<li>Compute/Jetson detected</li>");
           if (hasArm) items.push("<li>Robot arm detected</li>");
           if (hasCamera) items.push("<li>Camera detected</li>");
+          if (hasCar) items.push("<li>ELEGOO robot car detected</li>");
           robotDiscoveredComponents.innerHTML = `<ul class="robot-check-list">${items.join("")}</ul>`;
         } else {
           robotDiscoveredComponents.innerHTML = `<p class="muted">${nodeCount} nodes found. No robot hardware detected yet.</p>`;
+          updateBenchVisibility(false);
         }
 
         // Update Live Bench visibility
-        updateBenchVisibility(hasArm || hasJetson, { armType: "so100" });
+        if (hasArm || hasJetson || hasCar) {
+          updateBenchVisibility(true, hasCar
+            ? { robotType: "car", carType: "elegoo_v4" }
+            : { robotType: "arm", armType: "so100" });
+        }
       }
     } catch (err) {
       setStatus(err.message, true);
@@ -2391,13 +2407,21 @@ function updateBenchVisibility(hasComponents, config = {}) {
 
   if (benchIframe) {
     if (hasComponents) {
+      const isCar = config.robotType === "car";
       const params = new URLSearchParams({
-        armType: config.armType || "so100",
-        joints: "6",
+        robotType: isCar ? "car" : "arm",
         ip: config.ip || "",
         armPort: config.armPort || "8765",
         cameraPort: config.cameraPort || "8766"
       });
+
+      if (isCar) {
+        params.set("carType", config.carType || "elegoo_v4");
+      } else {
+        params.set("armType", config.armType || "so100");
+        params.set("joints", "6");
+      }
+
       const targetUrl = `/bench/?${params.toString()}`;
 
       if (benchIframe.src === "about:blank" || !benchIframe.src.includes(params.toString())) {
@@ -2408,6 +2432,28 @@ function updateBenchVisibility(hasComponents, config = {}) {
       benchIframe.src = "about:blank";
       benchIframe.style.display = "none";
     }
+  }
+}
+
+function syncBenchSelectionFromCurrentSource() {
+  const sourceMode = localStorage.getItem("forge_robot_source_mode") || "repo";
+  const selectedRepo = robotRepoSelect?.value || localStorage.getItem("forge_selected_robot_repo") || "";
+  const selectedFolder = localStorage.getItem("forge_selected_robot_folder") || "";
+  const sourceHint = `${sourceMode === "folder" ? selectedFolder : selectedRepo}`.toLowerCase();
+
+  if (!sourceHint) {
+    updateBenchVisibility(false);
+    return;
+  }
+
+  if (sourceHint.includes("elegoo")) {
+    updateBenchVisibility(true, { robotType: "car", carType: "elegoo_v4" });
+    return;
+  }
+
+  if (sourceHint.includes("lerobot") || sourceHint.includes("arm")) {
+    updateBenchVisibility(true, { robotType: "arm", armType: "so100" });
+    return;
   }
 }
 
@@ -2454,19 +2500,30 @@ if (robotOpenFolderButton) {
       // Update discovered components panel
       if (robotDiscoveredComponents && data.workspace?.graph?.nodes) {
         const nodes = data.workspace.graph.nodes;
+        const sourceHint = `${result.path || ""}`.toLowerCase();
         const hasJetson = nodes.some(n => (n.label || "").toLowerCase().includes("jetson") || (n.componentLabel || "").toLowerCase().includes("compute"));
         const hasArm = nodes.some(n => (n.label || "").toLowerCase().includes("arm") || (n.componentLabel || "").toLowerCase().includes("arm"));
         const hasCamera = nodes.some(n => (n.label || "").toLowerCase().includes("camera"));
+        const hasCar = sourceHint.includes("elegoo") || nodes.some((n) => {
+          const label = `${n.label || ""} ${(n.componentLabel || "")}`.toLowerCase();
+          return label.includes("elegoo") || label.includes("smart car") || label.includes("wheel") || label.includes("ultrasonic");
+        });
 
-        if (hasJetson || hasArm || hasCamera) {
+        if (hasJetson || hasArm || hasCamera || hasCar) {
           const items = [];
           if (hasJetson) items.push("<li>Compute/Jetson detected</li>");
           if (hasArm) items.push("<li>Robot arm detected</li>");
           if (hasCamera) items.push("<li>Camera detected</li>");
+          if (hasCar) items.push("<li>ELEGOO robot car detected</li>");
           robotDiscoveredComponents.innerHTML = `<ul class="robot-check-list">${items.join("")}</ul>`;
 
           // Update Live Bench visibility
-          updateBenchVisibility(hasArm || hasJetson, { armType: "so100" });
+          updateBenchVisibility(hasArm || hasJetson || hasCar, hasCar
+            ? { robotType: "car", carType: "elegoo_v4" }
+            : { robotType: "arm", armType: "so100" });
+        } else {
+          robotDiscoveredComponents.innerHTML = `<p class="muted">${nodeCount} nodes found. No robot hardware detected yet.</p>`;
+          updateBenchVisibility(false);
         }
       }
     } catch (err) {

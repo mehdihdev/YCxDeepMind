@@ -18,6 +18,8 @@ import logging
 import os
 import sys
 import time
+import glob
+import re
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Tuple
@@ -34,6 +36,20 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+def discover_serial_port() -> Optional[str]:
+    """Best-effort serial auto-discovery for Arduino-style controllers."""
+    patterns = [
+        "/dev/ttyUSB*",
+        "/dev/ttyACM*",
+        "/dev/tty.usb*",
+        "/dev/cu.usb*",
+    ]
+    candidates: List[str] = []
+    for pattern in patterns:
+        candidates.extend(glob.glob(pattern))
+    return sorted(set(candidates))[0] if candidates else None
 
 
 @dataclass
@@ -62,6 +78,8 @@ class ArduinoInterface:
         self.baudrate = baudrate
         self.simulate = simulate
         self.serial: Optional[serial.Serial] = None
+        self.protocol = "simulate" if simulate else "unknown"
+        self.command_counter = 0
 
         # Simulated state
         self.sim_left_speed = 0
@@ -74,19 +92,98 @@ class ArduinoInterface:
             logger.info(f"[Arduino] Running in simulation mode")
             return True
 
-        try:
-            self.serial = serial.Serial(self.port, self.baudrate, timeout=0.1)
-            time.sleep(2)  # Wait for Arduino reset
-            logger.info(f"[Arduino] Connected to {self.port}")
+        if self._connect_forge_protocol():
             return True
-        except Exception as e:
-            logger.error(f"[Arduino] Failed to connect: {e}")
+
+        if self._connect_elegoo_protocol():
+            return True
+
+        logger.error("[Arduino] Failed to detect a supported serial protocol on %s", self.port)
+        return False
+
+    def _open_serial(self, baudrate: int) -> bool:
+        self.disconnect()
+        try:
+            self.serial = serial.Serial(self.port, baudrate, timeout=0.25)
+            self.baudrate = baudrate
+            time.sleep(2)
+            self.serial.reset_input_buffer()
+            self.serial.reset_output_buffer()
+            return True
+        except Exception as error:
+            logger.error("[Arduino] Failed to open %s at %s baud: %s", self.port, baudrate, error)
+            self.serial = None
             return False
+
+    def _connect_forge_protocol(self) -> bool:
+        if not self._open_serial(self.baudrate):
+            return False
+
+        response = self._send_forge_command("PING")
+        if response == "PONG":
+            self.protocol = "forge"
+            logger.info("[Arduino] Connected to %s using Forge serial protocol @ %s", self.port, self.baudrate)
+            return True
+        return False
+
+    def _connect_elegoo_protocol(self) -> bool:
+        if not self._open_serial(9600):
+            return False
+
+        response = self._send_elegoo_payload({"N": 21, "D1": 2}, timeout=0.6)
+        if response and re.match(r"^\{f\d+_[^}]+\}$", response):
+            self.protocol = "elegoo_json"
+            logger.info("[Arduino] Connected to %s using stock ELEGOO JSON protocol @ 9600", self.port)
+            self._send_elegoo_payload({"N": 100}, timeout=0.2)
+            return True
+        return False
 
     def disconnect(self):
         if self.serial:
             self.serial.close()
             logger.info("[Arduino] Disconnected")
+            self.serial = None
+
+    def _readline(self) -> str:
+        if not self.serial:
+            return ""
+        return self.serial.readline().decode(errors="ignore").strip()
+
+    def _read_until_brace(self, timeout: float = 0.5) -> str:
+        if not self.serial:
+            return ""
+
+        deadline = time.time() + timeout
+        buffer = b""
+        while time.time() < deadline:
+            chunk = self.serial.read_until(b"}")
+            if chunk:
+                buffer += chunk
+                if b"}" in buffer:
+                    break
+        return buffer.decode(errors="ignore").strip()
+
+    def _send_forge_command(self, cmd: str) -> Optional[str]:
+        if not self.serial:
+            return None
+        self.serial.write(f"{cmd}\n".encode())
+        return self._readline()
+
+    def _send_elegoo_payload(self, payload: Dict, timeout: float = 0.35) -> Optional[str]:
+        if not self.serial:
+            return None
+        self.command_counter += 1
+        frame = {"H": f"f{self.command_counter}", **payload}
+        self.serial.write(json.dumps(frame, separators=(",", ":")).encode())
+        return self._read_until_brace(timeout=timeout)
+
+    def _parse_elegoo_value(self, response: Optional[str]) -> Optional[str]:
+        if not response:
+            return None
+        if response == "{ok}":
+            return "ok"
+        match = re.match(r"^\{[^_]+_(.+)\}$", response)
+        return match.group(1) if match else None
 
     def send_command(self, cmd: str) -> Optional[str]:
         """Send command to Arduino and get response."""
@@ -94,12 +191,91 @@ class ArduinoInterface:
             return self._simulate_command(cmd)
 
         try:
-            self.serial.write(f"{cmd}\n".encode())
-            response = self.serial.readline().decode().strip()
-            return response
+            if self.protocol == "forge":
+                return self._send_forge_command(cmd)
+            if self.protocol == "elegoo_json":
+                return self._send_elegoo_command(cmd)
+            logger.warning("[Arduino] Unknown protocol, falling back to simulation for command: %s", cmd)
+            return self._simulate_command(cmd)
         except Exception as e:
             logger.error(f"[Arduino] Command error: {e}")
             return None
+
+    def _send_elegoo_command(self, cmd: str) -> Optional[str]:
+        parts = cmd.split()
+        if not parts:
+            return "OK"
+
+        command = parts[0].upper()
+
+        if command == "PING":
+            return "PONG"
+
+        if command == "STOP":
+            self._send_elegoo_payload({"N": 100}, timeout=0.2)
+            self.sim_left_speed = 0
+            self.sim_right_speed = 0
+            return "OK"
+
+        if command == "MOTOR" and len(parts) >= 3:
+            left = int(parts[1])
+            right = int(parts[2])
+            self.sim_left_speed = left
+            self.sim_right_speed = right
+            direction, speed = self._map_left_right_to_elegoo(left, right)
+            if speed == 0:
+                self._send_elegoo_payload({"N": 100}, timeout=0.2)
+            else:
+                self._send_elegoo_payload({"N": 3, "D1": direction, "D2": speed}, timeout=0.2)
+            return "OK"
+
+        if command == "SERVO" and len(parts) >= 2:
+            angle = max(0, min(180, int(parts[1])))
+            self.sim_servo_angle = angle
+            self._send_elegoo_payload({"N": 5, "D1": 1, "D2": angle * 10}, timeout=0.2)
+            return "OK"
+
+        if command == "ULTRASONIC":
+            response = self._send_elegoo_payload({"N": 21, "D1": 2}, timeout=0.5)
+            value = self._parse_elegoo_value(response)
+            return value or "150"
+
+        if command == "IR_LINE":
+            readings: List[str] = []
+            for index in (0, 1, 2):
+                response = self._send_elegoo_payload({"N": 22, "D1": index}, timeout=0.4)
+                value = self._parse_elegoo_value(response)
+                readings.append(value or "0")
+            return ",".join(readings)
+
+        if command == "IR_OBSTACLE":
+            return "0,0"
+
+        if command == "STATE":
+            ultrasonic = self.send_command("ULTRASONIC") or "150"
+            ir_line = self.send_command("IR_LINE") or "0,0,0"
+            return json.dumps({
+                "left_speed": self.sim_left_speed,
+                "right_speed": self.sim_right_speed,
+                "servo_angle": self.sim_servo_angle,
+                "ultrasonic": float(ultrasonic),
+                "line": [int(x) for x in ir_line.split(",")],
+            })
+
+        return "OK"
+
+    def _map_left_right_to_elegoo(self, left: int, right: int) -> Tuple[int, int]:
+        speed = max(abs(left), abs(right))
+        if speed < 10:
+            return 0, 0
+
+        if left >= 0 and right >= 0:
+            return 3, speed
+        if left <= 0 and right <= 0:
+            return 4, speed
+        if left < 0 < right:
+            return 1, speed
+        return 2, speed
 
     def _simulate_command(self, cmd: str) -> str:
         """Simulate Arduino responses."""
@@ -238,10 +414,18 @@ class CarServer:
         port = controller_config.get("port", "/dev/ttyUSB0")
         baudrate = controller_config.get("baudrate", 115200)
 
+        if not port or not os.path.exists(port):
+            detected_port = discover_serial_port()
+            if detected_port:
+                logger.info("[Arduino] Auto-detected controller at %s", detected_port)
+                port = detected_port
+            else:
+                logger.warning("[Arduino] No serial controller detected, falling back to simulation mode")
+
         self.arduino = ArduinoInterface(
             port=port,
             baudrate=baudrate,
-            simulate=not HAS_SERIAL
+            simulate=not HAS_SERIAL or not port or not os.path.exists(port)
         )
         self.arduino.connect()
 
@@ -255,6 +439,12 @@ class CarServer:
         logger.info(f"Client {client_id} connected. Total: {len(self.clients)}")
 
         try:
+            await websocket.send(json.dumps({
+                "type": "connected",
+                "robot_type": "elegoo_car",
+                "features": ["drive", "set_velocity", "scan", "camera", "recording"],
+            }))
+            await self.send_state(websocket)
             async for message in websocket:
                 await self.handle_message(websocket, message)
         except websockets.exceptions.ConnectionClosed:
@@ -475,9 +665,12 @@ class CarServer:
 
     async def control_loop(self):
         """Main control loop - read sensors, handle autonomous mode, broadcast state."""
-        sensor_update_interval = 1.0 / self.config.get("control", {}).get("update_rate_hz", 50)
-
         while self.running:
+            update_rate_hz = self.config.get("control", {}).get("update_rate_hz", 50)
+            if self.arduino and self.arduino.protocol == "elegoo_json":
+                update_rate_hz = min(update_rate_hz, 8)
+            sensor_update_interval = 1.0 / max(update_rate_hz, 1)
+
             # Read sensors
             self.ultrasonic_distance = self.arduino.get_ultrasonic_distance()
             self.ir_line = self.arduino.get_ir_line_sensors()

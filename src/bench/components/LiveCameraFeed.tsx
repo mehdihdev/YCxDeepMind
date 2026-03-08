@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 
 interface CameraInfo {
+  name?: string;
   width: number;
   height: number;
   fps: number;
@@ -23,9 +24,62 @@ export function LiveCameraFeed({ host, port, onConnectionChange, autoConnect = f
   const [fps, setFps] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
+  const canvasRefs = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const frameCountRef = useRef(0);
   const lastFpsUpdateRef = useRef(Date.now());
+
+  const updateFps = useCallback(() => {
+    frameCountRef.current++;
+    const now = Date.now();
+    if (now - lastFpsUpdateRef.current >= 1000) {
+      setFps(frameCountRef.current);
+      frameCountRef.current = 0;
+      lastFpsUpdateRef.current = now;
+    }
+  }, []);
+
+  const renderFrame = useCallback((cameraId: string, jpegBytes: Uint8Array) => {
+    const buffer = jpegBytes.buffer.slice(
+      jpegBytes.byteOffset,
+      jpegBytes.byteOffset + jpegBytes.byteLength,
+    ) as ArrayBuffer;
+    const blob = new Blob([buffer], { type: 'image/jpeg' });
+    const url = URL.createObjectURL(blob);
+    const canvas = canvasRefs.current.get(cameraId);
+    if (!canvas) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+    updateFps();
+  }, [updateFps]);
+
+  const subscribeAll = useCallback((cameraMap: Record<string, CameraInfo>) => {
+    const cameraIds = Object.keys(cameraMap);
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !cameraIds.length) {
+      return;
+    }
+
+    wsRef.current.send(JSON.stringify({
+      type: 'subscribe',
+      cameras: cameraIds,
+    }));
+  }, []);
 
   const connect = useCallback(() => {
     if (wsRef.current) {
@@ -43,57 +97,46 @@ export function LiveCameraFeed({ host, port, onConnectionChange, autoConnect = f
       setIsConnected(true);
       setIsConnecting(false);
       onConnectionChange?.(true);
+      ws.send(JSON.stringify({ type: 'list_cameras' }));
     };
 
     ws.onmessage = async (event) => {
       if (typeof event.data === 'string') {
-        // JSON message (camera info, etc.)
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'camera_info') {
-            setCameras(data.cameras || {});
-            console.log('[camera] Camera info:', data.cameras);
+            const cameraMap = data.cameras || {};
+            setCameras(cameraMap);
+            subscribeAll(cameraMap);
+            console.log('[camera] Camera info:', cameraMap);
+          } else if (data.type === 'cameras') {
+            const cameraMap = (data.cameras || []).reduce((acc: Record<string, CameraInfo>, camera: any) => {
+              if (!camera?.id) return acc;
+              acc[String(camera.id)] = {
+                name: camera.name || String(camera.id),
+                width: camera.width ?? 640,
+                height: camera.height ?? 480,
+                fps: camera.fps ?? 15,
+              };
+              return acc;
+            }, {});
+            setCameras(cameraMap);
+            subscribeAll(cameraMap);
+          } else if (data.type === 'frame' && data.camera && data.data) {
+            const binary = Uint8Array.from(atob(data.data), (char) => char.charCodeAt(0));
+            renderFrame(String(data.camera), binary);
           }
         } catch (e) {
           console.error('[camera] Failed to parse message:', e);
         }
       } else {
-        // Binary message (frame data)
         const buffer = event.data as ArrayBuffer;
         if (buffer.byteLength < 2) return;
 
-        // Extract camera ID (first byte) and JPEG data
         const view = new DataView(buffer);
-        const cameraId = view.getUint8(0);
+        const cameraId = String(view.getUint8(0));
         const jpegData = new Uint8Array(buffer, 1);
-
-        // Create blob and render to canvas
-        const blob = new Blob([jpegData], { type: 'image/jpeg' });
-        const url = URL.createObjectURL(blob);
-
-        const canvas = canvasRefs.current.get(cameraId);
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            const img = new Image();
-            img.onload = () => {
-              canvas.width = img.width;
-              canvas.height = img.height;
-              ctx.drawImage(img, 0, 0);
-              URL.revokeObjectURL(url);
-            };
-            img.src = url;
-          }
-        }
-
-        // Update FPS counter
-        frameCountRef.current++;
-        const now = Date.now();
-        if (now - lastFpsUpdateRef.current >= 1000) {
-          setFps(frameCountRef.current);
-          frameCountRef.current = 0;
-          lastFpsUpdateRef.current = now;
-        }
+        renderFrame(cameraId, jpegData);
       }
     };
 
@@ -111,7 +154,7 @@ export function LiveCameraFeed({ host, port, onConnectionChange, autoConnect = f
     };
 
     wsRef.current = ws;
-  }, [host, port, onConnectionChange]);
+  }, [host, onConnectionChange, port, renderFrame, subscribeAll]);
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
@@ -136,7 +179,7 @@ export function LiveCameraFeed({ host, port, onConnectionChange, autoConnect = f
     };
   }, []);
 
-  const cameraIds = Object.keys(cameras).map(Number).sort();
+  const cameraIds = Object.keys(cameras).sort();
 
   return (
     <div style={styles.container}>
@@ -202,7 +245,7 @@ export function LiveCameraFeed({ host, port, onConnectionChange, autoConnect = f
             <div key={camId} style={styles.cameraPanel}>
               {!compact && (
                 <div style={styles.cameraLabel}>
-                  Camera {camId}
+                  {cameras[camId]?.name || `Camera ${camId}`}
                   {cameras[camId] && (
                     <span style={styles.cameraRes}>
                       {cameras[camId].width}x{cameras[camId].height}
@@ -236,6 +279,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
+    position: 'relative',
   },
   header: {
     display: 'flex',

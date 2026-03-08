@@ -1,0 +1,279 @@
+<mujoco model="elegoo_smart_car_v4">
+  <!-- ELEGOO Smart Robot Car Kit V4.0 MuJoCo Model -->
+  <!-- 4-wheel differential drive with ultrasonic sensor and front camera -->
+  <!-- Chassis alignment derived from the ELEGOO STEP snapshot + exported STL plates -->
+
+  <compiler angle="radian" meshdir="assets/elegoo/"/>
+
+  <option timestep="0.002" integrator="implicit" cone="elliptic" impratio="10">
+    <flag warmstart="enable"/>
+  </option>
+
+  <asset>
+    <!-- Materials -->
+    <material name="chassis_mat" rgba="0.1 0.1 0.1 1.0" specular="0.3" shininess="0.3"/>
+    <material name="wheel_mat" rgba="0.2 0.2 0.2 1.0" specular="0.1" shininess="0.1"/>
+    <material name="tire_mat" rgba="0.05 0.05 0.05 1.0" specular="0.0" shininess="0.0"/>
+    <material name="motor_mat" rgba="0.6 0.6 0.0 1.0" specular="0.2" shininess="0.2"/>
+    <material name="sensor_mat" rgba="0.0 0.5 0.8 1.0" specular="0.4" shininess="0.4"/>
+    <material name="servo_mat" rgba="0.3 0.3 0.8 1.0" specular="0.2" shininess="0.2"/>
+    <material name="pcb_mat" rgba="0.0 0.4 0.0 1.0" specular="0.1" shininess="0.1"/>
+    <material name="led_red" rgba="1.0 0.0 0.0 1.0" emission="0.5"/>
+    <material name="led_blue" rgba="0.0 0.0 1.0 1.0" emission="0.5"/>
+
+    <!-- Actual ELEGOO CAD meshes (scaled from mm to m) -->
+    <!-- Note: STL origin is offset, position adjusted in geom -->
+    <mesh name="bottom_plate" file="Bottom Plate.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="top_plate" file="Top Plate.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="dead_plate" file="Dead Plate.stl" scale="0.001 0.001 0.001"/>
+
+    <!-- Acrylic plate material -->
+    <material name="acrylic_black" rgba="0.05 0.05 0.05 0.9" specular="0.5" shininess="0.8"/>
+  </asset>
+
+  <default>
+    <default class="elegoo_car">
+      <!-- Wheel joints - continuous rotation -->
+      <joint frictionloss="0.01" armature="0.001" damping="0.1"/>
+
+      <default class="wheel_joint">
+        <joint axis="0 1 0" limited="false" type="hinge"/>
+      </default>
+
+      <default class="servo_joint">
+        <joint axis="0 0 1" range="-1.57 1.57" limited="true" damping="0.5"/>
+      </default>
+
+      <default class="visual">
+        <geom contype="0" conaffinity="0" density="0" group="2"/>
+      </default>
+
+      <default class="collision">
+        <geom group="3" friction="1.0 0.005 0.0001"/>
+      </default>
+
+      <default class="wheel_collision">
+        <geom type="cylinder" friction="2.0 0.1 0.01" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+      </default>
+    </default>
+  </default>
+
+  <worldbody>
+    <!-- Main chassis body -->
+    <body name="chassis" pos="0 0 0.045" childclass="elegoo_car">
+      <inertial pos="0 0 0" mass="0.5" diaginertia="0.002 0.004 0.005"/>
+      <freejoint name="chassis_free"/>
+
+      <!-- Main chassis plate - ELEGOO CAD mesh -->
+      <!-- STL offset: X~10mm, Y~-51mm, Z~-55mm - adjusted to center at origin -->
+      <!-- Rotated 90deg around Z so Y becomes forward (matches STL orientation) -->
+      <geom name="chassis_bottom_mesh" type="mesh" mesh="bottom_plate"
+            pos="-0.01 0.051 0.056" euler="0 0 0"
+            material="acrylic_black" class="visual"/>
+      <!-- Simplified collision box for physics -->
+      <geom name="chassis_bottom" type="box" size="0.066 0.115 0.002" pos="0 0 0"
+            material="chassis_mat" class="collision" rgba="0 0 0 0"/>
+
+      <!-- Upper deck - ELEGOO CAD mesh -->
+      <geom name="chassis_top_mesh" type="mesh" mesh="top_plate"
+            pos="-0.01 0.051 0.056" euler="0 0 0"
+            material="acrylic_black" class="visual"/>
+      <!-- Simplified collision box for physics -->
+      <geom name="chassis_top" type="box" size="0.066 0.115 0.002" pos="0 0 0.044"
+            material="chassis_mat" class="collision" rgba="0 0 0 0"/>
+
+      <!-- Dead plate (small bracket) -->
+      <geom name="dead_plate_mesh" type="mesh" mesh="dead_plate"
+            pos="-0.01 0.051 0.056" euler="0 0 0"
+            material="acrylic_black" class="visual"/>
+
+      <!-- Standoffs connecting decks (adjusted for 133x231mm chassis) -->
+      <geom name="standoff_fl" type="cylinder" size="0.004 0.022" pos="0.05 0.075 0.022" material="motor_mat"/>
+      <geom name="standoff_fr" type="cylinder" size="0.004 0.022" pos="0.05 -0.075 0.022" material="motor_mat"/>
+      <geom name="standoff_bl" type="cylinder" size="0.004 0.022" pos="-0.05 0.075 0.022" material="motor_mat"/>
+      <geom name="standoff_br" type="cylinder" size="0.004 0.022" pos="-0.05 -0.075 0.022" material="motor_mat"/>
+
+      <!-- Arduino UNO / Expansion Board (on top deck) -->
+      <geom name="arduino_board" type="box" size="0.035 0.025 0.008" pos="0 0 0.05"
+            material="pcb_mat" class="visual"/>
+
+      <!-- TB6612 Motor Driver Board -->
+      <geom name="motor_driver" type="box" size="0.022 0.022 0.012" pos="-0.04 0 0.054"
+            material="pcb_mat" class="visual"/>
+
+      <!-- Battery holder (4xAA or 18650 pack) -->
+      <geom name="battery" type="box" size="0.03 0.035 0.015" pos="0 0 0.018"
+            material="chassis_mat" class="visual"/>
+
+      <!-- ================== MOTORS AND WHEELS ================== -->
+      <!-- Adjusted for actual chassis: 133mm (X) x 231mm (Y) -->
+      <!-- Wheels positioned at chassis corners with motor mounts -->
+
+      <!-- Front Left Motor Mount + Wheel -->
+      <body name="motor_fl" pos="0.055 0.09 0">
+        <geom name="motor_fl_body" type="box" size="0.015 0.012 0.012" pos="0 0.015 0"
+              material="motor_mat" class="visual"/>
+        <body name="wheel_fl" pos="0 0.028 0">
+          <inertial pos="0 0 0" mass="0.05" diaginertia="0.00002 0.00003 0.00002"/>
+          <joint name="wheel_fl_joint" class="wheel_joint"/>
+          <geom name="wheel_fl_geom" type="cylinder" size="0.0325 0.015"
+                material="tire_mat" class="wheel_collision" euler="1.5708 0 0"/>
+          <!-- Wheel hub detail -->
+          <geom name="wheel_fl_hub" type="cylinder" size="0.018 0.016"
+                material="wheel_mat" class="visual" euler="1.5708 0 0"/>
+        </body>
+      </body>
+
+      <!-- Front Right Motor Mount + Wheel -->
+      <body name="motor_fr" pos="0.055 -0.09 0">
+        <geom name="motor_fr_body" type="box" size="0.015 0.012 0.012" pos="0 -0.015 0"
+              material="motor_mat" class="visual"/>
+        <body name="wheel_fr" pos="0 -0.028 0">
+          <inertial pos="0 0 0" mass="0.05" diaginertia="0.00002 0.00003 0.00002"/>
+          <joint name="wheel_fr_joint" class="wheel_joint"/>
+          <geom name="wheel_fr_geom" type="cylinder" size="0.0325 0.015"
+                material="tire_mat" class="wheel_collision" euler="1.5708 0 0"/>
+          <geom name="wheel_fr_hub" type="cylinder" size="0.018 0.016"
+                material="wheel_mat" class="visual" euler="1.5708 0 0"/>
+        </body>
+      </body>
+
+      <!-- Rear Left Motor Mount + Wheel -->
+      <body name="motor_bl" pos="-0.055 0.09 0">
+        <geom name="motor_bl_body" type="box" size="0.015 0.012 0.012" pos="0 0.015 0"
+              material="motor_mat" class="visual"/>
+        <body name="wheel_bl" pos="0 0.028 0">
+          <inertial pos="0 0 0" mass="0.05" diaginertia="0.00002 0.00003 0.00002"/>
+          <joint name="wheel_bl_joint" class="wheel_joint"/>
+          <geom name="wheel_bl_geom" type="cylinder" size="0.0325 0.015"
+                material="tire_mat" class="wheel_collision" euler="1.5708 0 0"/>
+          <geom name="wheel_bl_hub" type="cylinder" size="0.018 0.016"
+                material="wheel_mat" class="visual" euler="1.5708 0 0"/>
+        </body>
+      </body>
+
+      <!-- Rear Right Motor Mount + Wheel -->
+      <body name="motor_br" pos="-0.055 -0.09 0">
+        <geom name="motor_br_body" type="box" size="0.015 0.012 0.012" pos="0 -0.015 0"
+              material="motor_mat" class="visual"/>
+        <body name="wheel_br" pos="0 -0.028 0">
+          <inertial pos="0 0 0" mass="0.05" diaginertia="0.00002 0.00003 0.00002"/>
+          <joint name="wheel_br_joint" class="wheel_joint"/>
+          <geom name="wheel_br_geom" type="cylinder" size="0.0325 0.015"
+                material="tire_mat" class="wheel_collision" euler="1.5708 0 0"/>
+          <geom name="wheel_br_hub" type="cylinder" size="0.018 0.016"
+                material="wheel_mat" class="visual" euler="1.5708 0 0"/>
+        </body>
+      </body>
+
+      <!-- ================== SENSORS ================== -->
+
+      <!-- Ultrasonic Sensor Mount (Servo + HC-SR04) - at front of chassis -->
+      <body name="servo_mount" pos="0.07 0 0.025">
+        <geom name="servo_bracket" type="box" size="0.012 0.012 0.018" pos="0 0 0"
+              material="servo_mat" class="visual"/>
+
+        <body name="ultrasonic_head" pos="0.018 0 0.015">
+          <inertial pos="0 0 0" mass="0.02" diaginertia="0.000001 0.000001 0.000001"/>
+          <joint name="ultrasonic_pan" class="servo_joint"/>
+
+          <!-- HC-SR04 Ultrasonic Sensor -->
+          <geom name="ultrasonic_board" type="box" size="0.0225 0.01 0.008" pos="0.012 0 0"
+                material="pcb_mat"/>
+          <!-- Ultrasonic transducers (the "eyes") -->
+          <geom name="ultrasonic_left" type="cylinder" size="0.008 0.006" pos="0.018 0.012 0"
+                material="sensor_mat" euler="0 1.5708 0"/>
+          <geom name="ultrasonic_right" type="cylinder" size="0.008 0.006" pos="0.018 -0.012 0"
+                material="sensor_mat" euler="0 1.5708 0"/>
+
+          <!-- Sensor site for raycast -->
+          <site name="ultrasonic_site" pos="0.03 0 0" size="0.003" rgba="1 0 0 0.5"/>
+        </body>
+      </body>
+
+      <!-- IR Line Tracking Sensors (3x on front bottom) -->
+      <geom name="ir_sensor_left" type="box" size="0.006 0.004 0.003" pos="0.065 0.025 -0.012"
+            material="sensor_mat"/>
+      <geom name="ir_sensor_center" type="box" size="0.006 0.004 0.003" pos="0.065 0 -0.012"
+            material="sensor_mat"/>
+      <geom name="ir_sensor_right" type="box" size="0.006 0.004 0.003" pos="0.065 -0.025 -0.012"
+            material="sensor_mat"/>
+
+      <!-- IR sensor sites for line detection -->
+      <site name="ir_left_site" pos="0.065 0.025 -0.015" size="0.002" rgba="1 0 0 0.5"/>
+      <site name="ir_center_site" pos="0.065 0 -0.015" size="0.002" rgba="1 0 0 0.5"/>
+      <site name="ir_right_site" pos="0.065 -0.025 -0.015" size="0.002" rgba="1 0 0 0.5"/>
+
+      <!-- IR Obstacle Sensors (left and right sides) -->
+      <geom name="ir_obstacle_left" type="box" size="0.008 0.003 0.006" pos="0.055 0.085 0.025"
+            material="sensor_mat" euler="0 0 0.5"/>
+      <geom name="ir_obstacle_right" type="box" size="0.008 0.003 0.006" pos="0.055 -0.085 0.025"
+            material="sensor_mat" euler="0 0 -0.5"/>
+
+      <!-- Status LEDs -->
+      <geom name="led_power" type="sphere" size="0.003" pos="0.06 0.03 0.06" material="led_red"/>
+      <geom name="led_status" type="sphere" size="0.003" pos="0.06 -0.03 0.06" material="led_blue"/>
+
+      <!-- Camera module for the V4 camera variant -->
+      <geom name="camera_mast" type="box" size="0.008 0.008 0.03" pos="0.038 0 0.078"
+            material="servo_mat" class="visual"/>
+      <geom name="camera_module" type="box" size="0.02 0.012 0.012" pos="0.066 0 0.108"
+            material="pcb_mat" class="visual"/>
+      <geom name="camera_lens" type="cylinder" size="0.005 0.006" pos="0.082 0 0.108"
+            material="sensor_mat" class="visual" euler="0 1.5708 0"/>
+
+      <!-- Camera for robot view -->
+      <camera name="car_fpv" pos="0.082 0 0.108" xyaxes="0 -1 0 0 0 1" fovy="70"/>
+      <camera name="car_top" pos="0 0 0.35" xyaxes="1 0 0 0 1 0" fovy="60"/>
+      <camera name="car_rear" pos="-0.12 0 0.08" xyaxes="0 1 0 0 0 1" fovy="70"/>
+    </body>
+  </worldbody>
+
+  <!-- ================== ACTUATORS ================== -->
+  <!-- Differential drive: control left/right wheel velocities -->
+  <actuator>
+    <!-- Velocity control for wheels (simulating DC motors) -->
+    <velocity name="motor_fl" joint="wheel_fl_joint" kv="0.5" forcerange="-1 1"/>
+    <velocity name="motor_fr" joint="wheel_fr_joint" kv="0.5" forcerange="-1 1"/>
+    <velocity name="motor_bl" joint="wheel_bl_joint" kv="0.5" forcerange="-1 1"/>
+    <velocity name="motor_br" joint="wheel_br_joint" kv="0.5" forcerange="-1 1"/>
+
+    <!-- Position control for ultrasonic servo -->
+    <position name="ultrasonic_servo" joint="ultrasonic_pan" kp="5" ctrlrange="-1.57 1.57"/>
+  </actuator>
+
+  <!-- ================== SENSORS ================== -->
+  <sensor>
+    <!-- Wheel encoders (velocity sensing) -->
+    <jointvel name="encoder_fl" joint="wheel_fl_joint"/>
+    <jointvel name="encoder_fr" joint="wheel_fr_joint"/>
+    <jointvel name="encoder_bl" joint="wheel_bl_joint"/>
+    <jointvel name="encoder_br" joint="wheel_br_joint"/>
+
+    <!-- IMU on chassis -->
+    <accelerometer name="imu_accel" site="ultrasonic_site"/>
+    <gyro name="imu_gyro" site="ultrasonic_site"/>
+
+    <!-- Ultrasonic servo position -->
+    <jointpos name="servo_pos" joint="ultrasonic_pan"/>
+  </sensor>
+
+  <!-- Contact exclusions -->
+  <contact>
+    <exclude body1="chassis" body2="motor_fl"/>
+    <exclude body1="chassis" body2="motor_fr"/>
+    <exclude body1="chassis" body2="motor_bl"/>
+    <exclude body1="chassis" body2="motor_br"/>
+    <exclude body1="chassis" body2="servo_mount"/>
+  </contact>
+
+  <!-- Keyframes for common poses -->
+  <keyframe>
+    <key name="home" qpos="0 0 0.045 1 0 0 0 0 0 0 0 0" ctrl="0 0 0 0 0"/>
+    <key name="forward" ctrl="10 10 10 10 0"/>
+    <key name="turn_left" ctrl="5 10 5 10 0"/>
+    <key name="turn_right" ctrl="10 5 10 5 0"/>
+    <key name="scan_left" ctrl="0 0 0 0 1.57"/>
+    <key name="scan_right" ctrl="0 0 0 0 -1.57"/>
+  </keyframe>
+</mujoco>

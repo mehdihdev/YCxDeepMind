@@ -12,9 +12,11 @@ echo ""
 echo "[*] Updating system packages..."
 sudo apt-get update
 
-# Install Python dependencies
-echo "[*] Installing Python packages..."
-pip3 install --user websockets pyserial opencv-python numpy
+# Install Python dependencies in a local virtual environment
+echo "[*] Installing Python packages into .venv..."
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r jetson/requirements.txt
 
 # Add user to dialout group for serial access
 echo "[*] Adding user to dialout group..."

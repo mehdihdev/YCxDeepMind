@@ -8,7 +8,7 @@
   "controller": {
     "type": "arduino_uno",
     "board": "Arduino UNO R3",
-    "port": "/dev/ttyUSB0",
+    "port": "/dev/cu.usbserial-110",
     "baudrate": 115200
   },
 
@@ -20,30 +20,30 @@
   },
 
   "motors": {
-    "driver": "L298N",
+    "driver": "TB6612",
     "wheels": {
       "front_left": {
-        "enable_pin": 5,
-        "in1_pin": 7,
-        "in2_pin": 8,
+        "enable_pin": 6,
+        "direction_pin": 8,
+        "standby_pin": 3,
         "encoder": false
       },
       "front_right": {
-        "enable_pin": 6,
-        "in1_pin": 9,
-        "in2_pin": 10,
+        "enable_pin": 5,
+        "direction_pin": 7,
+        "standby_pin": 3,
         "encoder": false
       },
       "rear_left": {
-        "enable_pin": 5,
-        "in1_pin": 7,
-        "in2_pin": 8,
+        "enable_pin": 6,
+        "direction_pin": 8,
+        "standby_pin": 3,
         "encoder": false
       },
       "rear_right": {
-        "enable_pin": 6,
-        "in1_pin": 9,
-        "in2_pin": 10,
+        "enable_pin": 5,
+        "direction_pin": 7,
+        "standby_pin": 3,
         "encoder": false
       }
     },
@@ -53,7 +53,7 @@
 
   "servos": {
     "ultrasonic_pan": {
-      "pin": 3,
+      "pin": 10,
       "min_angle": 0,
       "max_angle": 180,
       "default_angle": 90,
@@ -64,38 +64,37 @@
   "sensors": {
     "ultrasonic": {
       "type": "HC-SR04",
-      "trigger_pin": 12,
-      "echo_pin": 13,
-      "max_distance_cm": 400
+      "trigger_pin": 13,
+      "echo_pin": 12,
+      "max_distance_cm": 150
     },
     "ir_line": {
       "type": "TCRT5000",
       "pins": {
-        "left": "A0",
+        "left": "A2",
         "center": "A1",
-        "right": "A2"
+        "right": "A0"
       },
       "threshold": 500
     },
     "ir_obstacle": {
-      "type": "IR_OBSTACLE",
-      "pins": {
-        "left": 2,
-        "right": 4
-      }
+      "type": "not_populated_on_default_v4",
+      "enabled": false
     }
   },
 
   "cameras": [
     {
       "id": "fpv",
-      "name": "ESP32-CAM",
+      "name": "Front Camera",
       "type": "esp32_wrover",
-      "ip": "192.168.1.101",
+      "device": "",
+      "ip": "",
       "stream_port": 81,
+      "stream_path": "/stream",
       "resolution": [640, 480],
       "fps": 15,
-      "enabled": false
+      "enabled": true
     }
   ],
 

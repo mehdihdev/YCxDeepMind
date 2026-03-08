@@ -7,10 +7,16 @@ A config-driven robot deployment system for the ELEGOO Smart Robot Car Kit V4.0 
 This repo provides a **config-driven** setup for:
 - **Differential drive control** (4-wheel skid steer)
 - **Sensor integration** (ultrasonic, IR line, IR obstacle)
-- **MuJoCo simulation** with official ELEGOO CAD meshes
+- **MuJoCo simulation** with official ELEGOO CAD meshes and camera module
 - **Recording & playback** for imitation learning
 - **Jetson/Raspberry Pi deployment** with one command
 - **Forge RDE integration** via Robot Graph
+- **Live Bench camera + sonar visualization** for sim, real, or both
+
+The Arduino sketch in `arduino/elegoo_car_firmware/` is a Forge RDE serial-control layer built on top of the official ELEGOO Smart Robot Car Kit V4.0 tutorial code and pin mapping from:
+
+- `03 Tutorial & Code/08 SmartRobotCarV4.0_DIY and Program on APP`
+- `03 Tutorial & Code/02 SmartRobotCarV4.0_Move/TB6612 ...`
 
 ## Quick Start
 
@@ -41,7 +47,7 @@ Edit `robot.config.json`:
 ./deploy.sh
 ```
 
-### 4. Start Server
+### 4. Start Servers
 
 On the Jetson/Pi:
 
@@ -51,7 +57,10 @@ On the Jetson/Pi:
 
 ### 5. Connect from Forge RDE
 
-Connect to: `ws://192.168.1.100:8765`
+Connect to:
+
+- Control: `ws://192.168.1.100:8765`
+- Camera: `ws://192.168.1.100:8766`
 
 ## Directory Structure
 
@@ -69,6 +78,7 @@ forge-rde-elegoo-car/
 │
 ├── jetson/                    # Server code (runs on Jetson/Pi)
 │   ├── car_server.py          # WebSocket car control
+│   ├── camera_server.py       # Camera stream bridge (USB or ESP32-CAM)
 │   └── requirements.txt
 │
 ├── scripts/
@@ -85,6 +95,8 @@ forge-rde-elegoo-car/
 │   └── robot-graph-schema.json
 │
 └── docs/                      # Datasheets & manuals
+    ├── cad/
+    └── elegoo-car/
 ```
 
 ## Hardware Setup
@@ -93,18 +105,20 @@ forge-rde-elegoo-car/
 
 | Component | Pin(s) | Notes |
 |-----------|--------|-------|
-| Left Motors Enable | D5 (PWM) | L298N ENA |
-| Right Motors Enable | D6 (PWM) | L298N ENB |
-| Left Motors Dir | D7, D8 | L298N IN1, IN2 |
-| Right Motors Dir | D9, D10 | L298N IN3, IN4 |
-| Ultrasonic Trig | D12 | HC-SR04 |
-| Ultrasonic Echo | D13 | HC-SR04 |
-| Ultrasonic Servo | D3 (PWM) | SG90 |
-| IR Line Left | A0 | TCRT5000 |
+| Right Motor PWM | D5 (PWM) | TB6612 PWMA |
+| Left Motor PWM | D6 (PWM) | TB6612 PWMB |
+| Right Motor Dir | D7 | TB6612 AIN1 |
+| Left Motor Dir | D8 | TB6612 BIN1 |
+| TB6612 Standby | D3 | TB6612 STBY |
+| Ultrasonic Trig | D13 | HC-SR04 |
+| Ultrasonic Echo | D12 | HC-SR04 |
+| Ultrasonic Servo | D10 (PWM) | SG90 |
+| IR Line Left | A2 | TCRT5000 |
 | IR Line Center | A1 | TCRT5000 |
-| IR Line Right | A2 | TCRT5000 |
-| IR Obstacle Left | D2 | Digital |
-| IR Obstacle Right | D4 | Digital |
+| IR Line Right | A0 | TCRT5000 |
+| Camera | `/dev/video0` or ESP32-CAM stream | Configure in `robot.config.json` |
+
+The default V4 hardware profile uses the official ELEGOO TB6612 layout. The IR obstacle pins from older V3-style variants are not assumed by default.
 
 ## WebSocket API
 
@@ -178,9 +192,11 @@ forge-rde-elegoo-car/
 
 The `mujoco/` folder contains a complete simulation model:
 
-- **elegoo_car.xml** - Car model with wheels, sensors, actuators
+- **elegoo_car.xml** - Car model with wheels, sensors, camera, and actuators
 - **elegoo_car_scene.xml** - Test environment with line track, obstacles
-- **assets/** - STL meshes from official ELEGOO CAD
+- **assets/** - STL meshes exported from the official ELEGOO CAD snapshot
+
+`mujoco/elegoo_car.xml` is aligned to the STEP/STL snapshot of the ELEGOO chassis so Live Bench can render the camera-equipped rover instead of a generic placeholder.
 
 ### Loading in MuJoCo
 
