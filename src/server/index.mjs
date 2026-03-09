@@ -2662,6 +2662,42 @@ async function discoverRobotWorkspaceRequirement(source, requirementId) {
   }
 
   requirement.options = await rankRequirementOptionsWithGemini(requirement, enrichedResults);
+  requirement.options = (requirement.options || []).map((option, index) => {
+    const sourceData =
+      enrichedResults.find((result) => result.url && result.url === option.url) ||
+      enrichedResults[index] ||
+      null;
+    const sourceSpecs =
+      sourceData?.specs && typeof sourceData.specs === "object" ? sourceData.specs : {};
+    const seededSummary =
+      option.fitSummary ||
+      option.excerpt ||
+      sourceData?.excerpt ||
+      sourceData?.snippet ||
+      `Candidate part option for requirement "${requirement.title || "Untitled"}".`;
+
+    option.datasheetSummary = {
+      ...(option.datasheetSummary || {}),
+      url: String(sourceData?.pdfUrl || sourceData?.url || option.url || ""),
+      type: String(sourceData?.sourceType || option.sourceType || "web"),
+      title: String(sourceData?.title || option.title || "Datasheet"),
+      summary: String(seededSummary),
+      highlights: buildDatasheetHighlights(sourceSpecs),
+      generatedAt: nowIso(),
+      precomputed: true
+    };
+    option.datasheetContext = {
+      url: String(sourceData?.pdfUrl || sourceData?.url || option.url || ""),
+      title: String(sourceData?.title || option.title || ""),
+      description: String(sourceData?.excerpt || sourceData?.snippet || ""),
+      specs: Object.fromEntries(
+        Object.entries(sourceSpecs)
+          .slice(0, 32)
+          .map(([key, value]) => [String(key), String(value)])
+      )
+    };
+    return option;
+  });
   requirement.status = requirement.options.length ? "options_ready" : "open";
   requirement.evidence = [
     ...(requirement.evidence || []),
@@ -2686,6 +2722,130 @@ async function discoverRobotWorkspaceRequirement(source, requirementId) {
     workspace: saved,
     requirement,
     run
+  };
+}
+
+function buildDatasheetHighlights(specs = {}, limit = 8) {
+  return Object.entries(specs || {})
+    .filter(([key, value]) => String(key || "").trim() && String(value || "").trim())
+    .slice(0, limit)
+    .map(([key, value]) => `${String(key).trim()}: ${String(value).trim()}`);
+}
+
+function buildHighlightsFromSummary(summary = "", limit = 4) {
+  return String(summary || "")
+    .split(/(?<=[.!?])\s+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+async function summarizeRequirementOptionDatasheet(source, requirementId, optionId) {
+  const workspace = await loadRobotWorkspaceState(source);
+  const requirement = workspace.requirements.find((item) => item.id === requirementId);
+  if (!requirement) {
+    throw new Error("Requirement not found.");
+  }
+
+  const option = (requirement.options || []).find((item) => item.id === optionId);
+  if (!option) {
+    throw new Error("Option not found.");
+  }
+
+  const cachedSummaryText = String(option.datasheetSummary?.summary || "").trim();
+  const isWeakSeedSummary = /^Candidate option for\b/i.test(cachedSummaryText);
+  if (cachedSummaryText && !isWeakSeedSummary) {
+    if (!Array.isArray(option.datasheetSummary.highlights) || !option.datasheetSummary.highlights.length) {
+      option.datasheetSummary.highlights = buildHighlightsFromSummary(option.datasheetSummary.summary);
+    }
+    return {
+      workspace,
+      requirement,
+      option,
+      datasheet: option.datasheetSummary
+    };
+  }
+
+  const candidateUrl = String(option.pdfUrl || option.datasheetUrl || option.url || "").trim();
+  if (!candidateUrl) {
+    throw new Error("No datasheet source URL found for this option.");
+  }
+
+  const fetched = await fetchDatasheet(candidateUrl);
+  const contextSpecs =
+    option.datasheetContext?.specs && typeof option.datasheetContext.specs === "object"
+      ? option.datasheetContext.specs
+      : {};
+  const specs =
+    fetched?.specs && typeof fetched.specs === "object" && Object.keys(fetched.specs).length
+      ? fetched.specs
+      : contextSpecs;
+  const specsPreview = Object.fromEntries(
+    Object.entries(specs).slice(0, 28).map(([key, value]) => [String(key), String(value)])
+  );
+  const resolvedUrl = String(fetched?.url || option.datasheetContext?.url || candidateUrl);
+  const summaryFallback = {
+    summary:
+      option.fitSummary ||
+      option.excerpt ||
+      option.datasheetContext?.description ||
+      fetched?.description ||
+      "No detailed datasheet summary was available for this option.",
+    highlights: buildDatasheetHighlights(specs).length
+      ? buildDatasheetHighlights(specs)
+      : buildHighlightsFromSummary(
+          option.fitSummary || option.excerpt || option.datasheetContext?.description || fetched?.description
+        )
+  };
+
+  const prompt = `Return ONLY valid JSON with this exact shape:
+{
+  "summary": "string",
+  "highlights": ["string"]
+}
+
+You are summarizing a robotics part datasheet for build planning.
+- Keep summary concise: 2-4 sentences.
+- Focus on compatibility, interfaces/ports, electrical/mechanical limits, and integration risks.
+- highlights should be 4-8 short bullet strings with specific specs when available.
+- Do not invent values.
+
+Requirement title: ${requirement.title || ""}
+Requirement description: ${requirement.description || ""}
+Option title: ${option.title || ""}
+Option fit summary: ${option.fitSummary || ""}
+Option excerpt: ${option.excerpt || ""}
+Source type: ${fetched?.type || option.sourceType || "web"}
+Source URL: ${resolvedUrl}
+Page title: ${fetched?.title || option.datasheetContext?.title || ""}
+Page description: ${String(
+    fetched?.description || option.datasheetContext?.description || ""
+  ).slice(0, 1200)}
+Extracted specs JSON: ${JSON.stringify(specsPreview)}`;
+
+  const ai = (await callGeminiJson({ prompt, fallback: summaryFallback })) || summaryFallback;
+  const summary = String(ai?.summary || summaryFallback.summary).trim();
+  const highlights = Array.isArray(ai?.highlights)
+    ? ai.highlights.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 8)
+    : summaryFallback.highlights;
+  const normalizedHighlights = highlights.length ? highlights : buildHighlightsFromSummary(summary);
+
+  const datasheet = {
+    url: resolvedUrl,
+    type: String(fetched?.type || option.sourceType || "web"),
+    title: String(fetched?.title || option.title || "Datasheet"),
+    summary,
+    highlights: normalizedHighlights,
+    generatedAt: nowIso()
+  };
+
+  option.datasheetSummary = datasheet;
+  const saved = await saveRobotWorkspaceState(workspace);
+  return {
+    workspace: saved,
+    requirement,
+    option,
+    datasheet
   };
 }
 
@@ -3195,6 +3355,58 @@ app.post("/api/auth/login", requireSupabase, async (req, res) => {
   }
 });
 
+app.post("/api/auth/signup", requireSupabase, async (req, res) => {
+  const firstName = String(req.body?.first_name || "").trim();
+  const email = String(req.body?.email || "").trim();
+  const password = String(req.body?.password || "");
+
+  if (!firstName || !email || !password) {
+    res.status(400).json({ error: "First name, email, and password are required." });
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { first_name: firstName }
+      }
+    });
+
+    if (error || !data?.user) {
+      res.status(400).json({ error: error?.message || "Signup failed." });
+      return;
+    }
+
+    if (data.session) {
+      req.session.user = data.user;
+      req.session.accessToken = data.session.access_token || "";
+      req.session.refreshToken = data.session.refresh_token || "";
+      req.session.githubToken = data.session.provider_token || "";
+      const githubIdentity = await resolveGithubIdentity(req.session);
+      await hydrateGithubToken(req.session);
+      const githubConnected = Boolean(req.session.githubToken) || githubIdentity;
+      res.json({
+        ok: true,
+        pendingConfirmation: false,
+        user: sanitizeUser(data.user),
+        githubConnected
+      });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      pendingConfirmation: true,
+      message: "Account created. Confirm your email before logging in.",
+      user: sanitizeUser(data.user)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Signup failed." });
+  }
+});
+
 app.post("/api/auth/logout", (req, res) => {
   req.session.destroy(() => {
     res.json({ ok: true });
@@ -3541,6 +3753,35 @@ app.post("/api/robot/requirements/:requirementId/select", requireAuth, async (re
     res.status(500).json({ error: err instanceof Error ? err.message : "Unable to bind selected option." });
   }
 });
+
+app.post(
+  "/api/robot/requirements/:requirementId/options/:optionId/datasheet",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const source = await resolveRobotWorkspaceSource({
+        repoFullName: req.body?.repoFullName,
+        sourcePath: req.body?.sourcePath
+      });
+      const result = await summarizeRequirementOptionDatasheet(
+        source,
+        String(req.params.requirementId || ""),
+        String(req.params.optionId || "")
+      );
+      res.json(
+        robotWorkspaceResponse(result.workspace, {
+          requirement: result.requirement,
+          option: result.option,
+          datasheet: result.datasheet
+        })
+      );
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Unable to summarize part datasheet."
+      });
+    }
+  }
+);
 
 app.post("/api/robot/requirements/:requirementId/deselect", requireAuth, async (req, res) => {
   try {

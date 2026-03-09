@@ -11,6 +11,26 @@
 
 const BROWSERBASE_API_URL = "https://www.browserbase.com/v1";
 
+async function parseJsonResponse(response, contextLabel) {
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`${contextLabel} failed (${response.status}): ${text.slice(0, 180)}`);
+  }
+
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      `${contextLabel} returned non-JSON response (content-type: ${contentType || "unknown"}).`
+    );
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${contextLabel} returned invalid JSON.`);
+  }
+}
+
 /**
  * Search for robot parts using Google via Browserbase
  * @param {string} query - Search query (e.g., "6-channel servo controller USB")
@@ -19,14 +39,16 @@ const BROWSERBASE_API_URL = "https://www.browserbase.com/v1";
  */
 export async function searchParts(query, options = {}) {
   const apiKey = process.env.BROWSERBASE_API_KEY;
+  const projectId = process.env.BROWSERBASE_PROJECT_ID;
 
   // Fallback to DuckDuckGo if no API key (development mode)
-  if (!apiKey) {
-    console.warn("BROWSERBASE_API_KEY not set, falling back to DuckDuckGo search");
+  if (!apiKey || !projectId) {
+    console.warn(
+      "BROWSERBASE_API_KEY or BROWSERBASE_PROJECT_ID not set, falling back to DuckDuckGo search"
+    );
     return searchDuckDuckGoFallback(query);
   }
 
-  const projectId = process.env.BROWSERBASE_PROJECT_ID;
   const maxResults = options.maxResults || 6;
 
   try {
@@ -48,13 +70,8 @@ export async function searchParts(query, options = {}) {
       })
     });
 
-    if (!sessionResponse.ok) {
-      throw new Error(`Browserbase session creation failed: ${sessionResponse.status}`);
-    }
-
-    const session = await sessionResponse.json();
+    const session = await parseJsonResponse(sessionResponse, "Browserbase session creation");
     const sessionId = session.id;
-    const connectUrl = session.connectUrl;
 
     // Use Playwright to connect and perform search
     // For now, we'll use a simplified approach with the REST API
@@ -73,9 +90,7 @@ export async function searchParts(query, options = {}) {
       })
     });
 
-    if (!pageResponse.ok) {
-      throw new Error(`Browserbase navigation failed: ${pageResponse.status}`);
-    }
+    await parseJsonResponse(pageResponse, "Browserbase navigation");
 
     // Extract search results using DOM evaluation
     const extractResponse = await fetch(`${BROWSERBASE_API_URL}/sessions/${sessionId}/evaluate`, {
@@ -107,11 +122,7 @@ export async function searchParts(query, options = {}) {
       headers: { "X-BB-API-Key": apiKey }
     });
 
-    if (!extractResponse.ok) {
-      throw new Error(`Browserbase extraction failed: ${extractResponse.status}`);
-    }
-
-    const extractResult = await extractResponse.json();
+    const extractResult = await parseJsonResponse(extractResponse, "Browserbase extraction");
     return extractResult.result || [];
 
   } catch (error) {
@@ -128,15 +139,14 @@ export async function searchParts(query, options = {}) {
  */
 export async function fetchDatasheet(url) {
   const apiKey = process.env.BROWSERBASE_API_KEY;
+  const projectId = process.env.BROWSERBASE_PROJECT_ID;
 
   // Simple fetch for non-Browserbase mode
-  if (!apiKey) {
+  if (!apiKey || !projectId) {
     return fetchDatasheetSimple(url);
   }
 
   try {
-    const projectId = process.env.BROWSERBASE_PROJECT_ID;
-
     // Create session
     const sessionResponse = await fetch(`${BROWSERBASE_API_URL}/sessions`, {
       method: "POST",
@@ -147,15 +157,11 @@ export async function fetchDatasheet(url) {
       body: JSON.stringify({ projectId })
     });
 
-    if (!sessionResponse.ok) {
-      throw new Error("Failed to create Browserbase session");
-    }
-
-    const session = await sessionResponse.json();
+    const session = await parseJsonResponse(sessionResponse, "Browserbase session creation");
     const sessionId = session.id;
 
     // Navigate to page
-    await fetch(`${BROWSERBASE_API_URL}/sessions/${sessionId}/pages`, {
+    const pageResponse = await fetch(`${BROWSERBASE_API_URL}/sessions/${sessionId}/pages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -166,6 +172,7 @@ export async function fetchDatasheet(url) {
         waitUntil: "networkidle"
       })
     });
+    await parseJsonResponse(pageResponse, "Browserbase page navigation");
 
     // Check for PDF links and extract specs
     const extractResponse = await fetch(`${BROWSERBASE_API_URL}/sessions/${sessionId}/evaluate`, {
@@ -219,7 +226,7 @@ export async function fetchDatasheet(url) {
       headers: { "X-BB-API-Key": apiKey }
     });
 
-    const result = await extractResponse.json();
+    const result = await parseJsonResponse(extractResponse, "Browserbase datasheet extraction");
     const extracted = result.result || {};
 
     // Determine type and return
@@ -305,12 +312,45 @@ async function fetchDatasheetSimple(url) {
     const html = await response.text();
     const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/i);
     const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+    const ogDescMatch = html.match(
+      /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i
+    );
+    const pdfHrefMatch = html.match(
+      /<a[^>]+href=["']([^"']+\.pdf(?:\?[^"']*)?)["'][^>]*>([\s\S]*?)<\/a>/i
+    );
+    const specs = {};
+
+    const tableRows = Array.from(
+      html.matchAll(
+        /<tr[^>]*>\s*<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>\s*<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>[\s\S]*?<\/tr>/gi
+      )
+    );
+
+    for (const row of tableRows) {
+      const key = stripHtml(row[1]).slice(0, 80);
+      const value = stripHtml(row[2]).slice(0, 200);
+      if (!key || !value || key.length > 60) continue;
+      specs[key] = value;
+      if (Object.keys(specs).length >= 24) break;
+    }
+
+    if (!Object.keys(specs).length) {
+      const listItems = Array.from(html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi))
+        .map((match) => stripHtml(match[1]))
+        .filter((text) => text.length >= 10 && text.length <= 220)
+        .slice(0, 12);
+      listItems.forEach((item, index) => {
+        specs[`Feature ${index + 1}`] = item;
+      });
+    }
 
     return {
       type: "html",
       url,
       title: stripHtml(titleMatch?.[1] || ""),
-      description: stripHtml(descMatch?.[1] || "").slice(0, 500)
+      description: stripHtml(descMatch?.[1] || ogDescMatch?.[1] || "").slice(0, 700),
+      specs,
+      pdfUrl: pdfHrefMatch ? normalizeUrl(pdfHrefMatch[1]) : null
     };
   } catch {
     return { type: "unavailable", url };
@@ -338,10 +378,22 @@ function normalizeUrl(rawUrl) {
  * Strip HTML tags from text
  */
 function stripHtml(text) {
-  return String(text || "")
+  return decodeHtmlEntities(
+    String(text || "")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+  );
+}
+
+function decodeHtmlEntities(text) {
+  return String(text || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x2F;/gi, "/");
 }
 
 export default {

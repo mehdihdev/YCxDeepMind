@@ -2047,6 +2047,25 @@ pre, code, .output {
     }
   }
 }
+.signin-link-btn {
+  display: inline-flex;
+  border-style: var(--tw-border-style);
+  border-width: 0px;
+  background-color: transparent;
+  padding: calc(var(--spacing) * 0);
+  color: var(--color-emerald-300);
+  &:hover {
+    @media (hover: hover) {
+      color: var(--color-emerald-200);
+    }
+  }
+}
+.signin-helper {
+  margin-top: calc(var(--spacing) * 1);
+  font-size: var(--text-xs);
+  line-height: var(--tw-leading, var(--text-xs--line-height));
+  color: var(--color-slate-500);
+}
 .team-modal-grid {
   margin-top: calc(var(--spacing) * 5);
   display: grid;

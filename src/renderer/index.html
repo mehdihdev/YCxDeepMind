@@ -486,16 +486,26 @@
     <div id="signin-modal" class="modal hidden" aria-hidden="true">
       <div class="modal-backdrop" data-close-modal="true"></div>
       <div class="modal-card">
-        <p class="signin-eyebrow">SECURE ACCESS</p>
-        <h3>Sign in to Forge RDE</h3>
-        <p class="signin-subtitle">Access your personalized homepage and workflows.</p>
+        <p id="signin-eyebrow" class="signin-eyebrow">SECURE ACCESS</p>
+        <h3 id="signin-title">Sign in to Forge RDE</h3>
+        <p id="signin-subtitle" class="signin-subtitle">Access your personalized homepage and workflows.</p>
         <form id="login-form" class="stack-form">
+          <div id="signup-first-name-row" class="hidden">
+            <label for="signup-first-name">First name</label>
+            <input id="signup-first-name" type="text" placeholder="First name" />
+          </div>
           <label for="email">Email</label>
           <input id="email" type="email" placeholder="Email" required />
           <label for="password">Password</label>
-          <input id="password" type="password" placeholder="Password" required />
-          <button type="submit" class="signin-submit">Login</button>
-          <p class="signin-footnote">New here? <span>Create an account</span></p>
+          <input id="password" type="password" placeholder="Password" minlength="8" required />
+          <button id="signin-submit" type="submit" class="signin-submit">Login</button>
+          <p class="signin-footnote">
+            <span id="signin-footnote-prefix">New here?</span>
+            <button id="signin-toggle-mode" type="button" class="signin-link-btn">Create an account</button>
+          </p>
+          <p id="signin-helper" class="signin-helper hidden">
+            If email confirmation is enabled, you will need to verify before logging in.
+          </p>
         </form>
       </div>
     </div>
@@ -523,6 +533,19 @@
             </form>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="datasheet-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-datasheet-modal="true"></div>
+      <div class="modal-card datasheet-modal-card">
+        <div class="modal-title-row">
+          <h3 id="datasheet-modal-title">Datasheet summary</h3>
+          <button type="button" class="secondary-action" data-close-datasheet-modal="true">Close</button>
+        </div>
+        <p id="datasheet-modal-meta" class="muted"></p>
+        <p id="datasheet-modal-summary" class="muted">Select a part option to view its summarized datasheet.</p>
+        <div id="datasheet-modal-highlights" class="simple-list"></div>
       </div>
     </div>
 

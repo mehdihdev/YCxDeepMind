@@ -1,65 +1,15 @@
-# Forge RDE (Merged Baseline)
+# Forge RDE
 
-Electron desktop shell + local Forge API server.
+Six months ago, AI could not understand the full context that robotics development actually needed across software, electronics, and hardware. We naturally discovered this problem in our own research and work. We used Gemini, Overshoot, and BrowserBase which is the backbone to our RDE to help robotics engineers develop across all modalities and maintain full context. 
 
-This baseline merges core pieces from:
-- `forge-server`: account auth + GitHub repo access flow
-- `rde-env`: repository analysis style endpoint for project context
+Our dream for this product is to become the shovel that sells in this new gold rush of robotics. 
 
-## Quick Start
+You can run this program by simply adding the required api keys into `.env.example` and removing the `.example` prefix, then running:
 
-```bash
-npm install --cache .npm-cache
-cp .env.example .env
+```
 npm run dev
 ```
 
-## Run Against solusforge.com
+from the root folder.
 
-```bash
-npm run dev:remote
-```
-
-Or set `FORGE_REMOTE_URL=https://solusforge.com` in `.env` and run `npm run dev`.
-
-## Required Env
-
-Set these in `.env`:
-- `SUPABASE_URL`
-- `SUPABASE_PUBLISHABLE_KEY`
-- `SESSION_SECRET`
-- `SESSION_TTL_DAYS` (default 30)
-- `SUPABASE_SERVICE_ROLE_KEY` (needed to persist/hydrate GitHub provider tokens like `forge-server`)
-- `GOOGLE_AI_API_KEY` (required for Artifact Generator via Nano Banana/Gemini API)
-- `NANO_BANANA_MODEL` (default `gemini-3.1-flash-image-preview`)
-- `LOCAL_REPOS_ROOT` (required for Code Workspace repo selector to resolve local checkouts)
-
-For GitHub repos through Supabase OAuth, ensure your Supabase GitHub provider is configured and provider tokens are enabled.
-
-Local login sessions are persisted on disk at:
-- `~/.forge-rde/sessions`
-
-## What Works Now
-
-- Desktop app boots a local Express server and loads it in Electron.
-- Optional remote mode: loads `FORGE_REMOTE_URL` directly (skips local server boot).
-- Email/password login via Supabase (`/api/auth/login`).
-- GitHub OAuth connect (`/api/auth/github/connect`) + callback handling.
-- Pull authenticated GitHub repositories (`/api/github/repos`).
-- RDE-style repository scan endpoint (`/api/rde/analyze`) for quick file/type stats.
-- Team workspace endpoints/UI: create/join/switch team, members, tasks, runs, fixes.
-- Artifact generator endpoint wired to Google AI (Nano Banana model configurable via env).
-- Code Workspace file browser/editor with GitHub-repo selector to local checkout resolution.
-
-## Team DB Setup
-
-Run the SQL in:
-- `supabase/team_workspace_schema.sql`
-
-This creates:
-- `team_workspaces`
-- `team_members`
-- `team_tasks`
-- `team_artifacts`
-
-Team workspace features are Supabase-only. If those tables are missing, team APIs will return a setup error until the schema is applied.
+Come see our latest products and our progress on https://solusforge.com

@@ -774,6 +774,14 @@ code,
   @apply rounded-full bg-slate-100 text-slate-950 hover:border-slate-100;
 }
 
+.signin-link-btn {
+  @apply inline-flex border-0 bg-transparent p-0 text-emerald-300 hover:text-emerald-200;
+}
+
+.signin-helper {
+  @apply mt-1 text-xs text-slate-500;
+}
+
 .team-modal-grid {
   @apply mt-5 grid gap-4 md:grid-cols-2;
 }

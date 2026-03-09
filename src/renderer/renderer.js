@@ -11,6 +11,15 @@ const accountEmail = document.getElementById("account-email");
 const sidebarLogoutButton = document.getElementById("sidebar-logout");
 const loginForm = document.getElementById("login-form");
 const signInModal = document.getElementById("signin-modal");
+const signInEyebrow = document.getElementById("signin-eyebrow");
+const signInTitle = document.getElementById("signin-title");
+const signInSubtitle = document.getElementById("signin-subtitle");
+const signInSubmitButton = document.getElementById("signin-submit");
+const signInToggleModeButton = document.getElementById("signin-toggle-mode");
+const signInFootnotePrefix = document.getElementById("signin-footnote-prefix");
+const signInHelper = document.getElementById("signin-helper");
+const signupFirstNameRow = document.getElementById("signup-first-name-row");
+const signupFirstNameInput = document.getElementById("signup-first-name");
 const githubConnectButton = document.getElementById("github-connect");
 const reposRefreshButton = document.getElementById("repos-refresh");
 const repoGrid = document.getElementById("repo-grid");
@@ -106,6 +115,11 @@ const robotObjectiveInput = document.getElementById("robot-objective");
 const robotObservationsInput = document.getElementById("robot-observations");
 const robotDiscoveredComponents = document.getElementById("robot-discovered-components");
 const robotGeneratedFiles = document.getElementById("robot-generated-files");
+const datasheetModal = document.getElementById("datasheet-modal");
+const datasheetModalTitle = document.getElementById("datasheet-modal-title");
+const datasheetModalMeta = document.getElementById("datasheet-modal-meta");
+const datasheetModalSummary = document.getElementById("datasheet-modal-summary");
+const datasheetModalHighlights = document.getElementById("datasheet-modal-highlights");
 
 const analyzeForm = document.getElementById("analyze-form");
 const repoPathInput = document.getElementById("repo-path");
@@ -149,6 +163,7 @@ let terminalFitAddon = null;
 let terminalStarted = false;
 let terminalEchoLocalInput = false;
 let currentRobotWorkspace = null;
+let authFormMode = "login";
 let currentTeamState = {
   storage: "unknown",
   teams: [],
@@ -712,7 +727,46 @@ function wrapText(text, maxCharsPerLine = 34, maxLines = 4) {
   return lines.join("\n");
 }
 
+function setAuthFormMode(mode) {
+  authFormMode = mode === "signup" ? "signup" : "login";
+  const isSignup = authFormMode === "signup";
+
+  if (signInEyebrow) {
+    signInEyebrow.textContent = isSignup ? "CREATE ACCOUNT" : "SECURE ACCESS";
+  }
+  if (signInTitle) {
+    signInTitle.textContent = isSignup ? "Create your Forge RDE Account" : "Sign in to Forge RDE";
+  }
+  if (signInSubtitle) {
+    signInSubtitle.textContent = isSignup
+      ? "Start with your first name, email, and a secure password."
+      : "Access your personalized homepage and workflows.";
+  }
+  if (signInSubmitButton) {
+    signInSubmitButton.textContent = isSignup ? "Sign up" : "Login";
+  }
+  if (signInFootnotePrefix) {
+    signInFootnotePrefix.textContent = isSignup ? "Already have an account?" : "New here?";
+  }
+  if (signInToggleModeButton) {
+    signInToggleModeButton.textContent = isSignup ? "Log in" : "Create an account";
+  }
+  if (signupFirstNameRow) {
+    signupFirstNameRow.classList.toggle("hidden", !isSignup);
+  }
+  if (signupFirstNameInput) {
+    signupFirstNameInput.required = isSignup;
+    if (!isSignup) {
+      signupFirstNameInput.value = "";
+    }
+  }
+  if (signInHelper) {
+    signInHelper.classList.toggle("hidden", !isSignup);
+  }
+}
+
 function openSignInModal() {
+  setAuthFormMode("login");
   signInModal.classList.remove("hidden");
   signInModal.classList.remove("closing");
   signInModal.classList.add("opening");
@@ -746,6 +800,57 @@ function closeTeamModal() {
     teamModal.setAttribute("aria-hidden", "true");
     teamModal.classList.remove("closing");
   }, 220);
+}
+
+function openDatasheetModal() {
+  if (!datasheetModal) return;
+  datasheetModal.classList.remove("hidden");
+  datasheetModal.classList.remove("closing");
+  datasheetModal.classList.add("opening");
+  datasheetModal.setAttribute("aria-hidden", "false");
+}
+
+function closeDatasheetModal() {
+  if (!datasheetModal) return;
+  datasheetModal.classList.remove("opening");
+  datasheetModal.classList.add("closing");
+  setTimeout(() => {
+    datasheetModal.classList.add("hidden");
+    datasheetModal.setAttribute("aria-hidden", "true");
+    datasheetModal.classList.remove("closing");
+  }, 220);
+}
+
+function renderDatasheetModalContent(payload = {}) {
+  if (datasheetModalTitle) {
+    datasheetModalTitle.textContent = payload.title || "Datasheet summary";
+  }
+
+  const sourceType = String(payload.sourceType || "").trim();
+  const sourceUrl = String(payload.sourceUrl || "").trim();
+  const metaParts = [];
+  if (sourceType) metaParts.push(sourceType.toUpperCase());
+  if (sourceUrl) metaParts.push(sourceUrl);
+  if (datasheetModalMeta) {
+    datasheetModalMeta.textContent = metaParts.join(" • ") || "No source URL available.";
+  }
+
+  if (datasheetModalSummary) {
+    datasheetModalSummary.textContent =
+      payload.summary || "No summary was generated for this part option.";
+  }
+
+  if (datasheetModalHighlights) {
+    const highlights = Array.isArray(payload.highlights) ? payload.highlights.filter(Boolean) : [];
+    if (!highlights.length) {
+      datasheetModalHighlights.innerHTML = '<div class="robot-list-card"><p class="muted">No key specs were extracted.</p></div>';
+      return;
+    }
+    datasheetModalHighlights.innerHTML = `<ul>${highlights
+      .slice(0, 8)
+      .map((item) => `<li>${item}</li>`)
+      .join("")}</ul>`;
+  }
 }
 
 async function apiJson(path, options = {}) {
@@ -1427,10 +1532,33 @@ navButtons.forEach((btn) => {
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+  const email = String(document.getElementById("email").value || "").trim();
+  const password = String(document.getElementById("password").value || "");
+  const firstName = String(signupFirstNameInput?.value || "").trim();
 
   try {
+    if (authFormMode === "signup") {
+      if (!firstName) {
+        setStatus("First name is required.", true);
+        return;
+      }
+      setStatus("Creating account...");
+      const data = await apiJson("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ first_name: firstName, email, password })
+      });
+
+      if (data?.pendingConfirmation) {
+        setStatus("Account created. Check your email to confirm before logging in.");
+        setAuthFormMode("login");
+        return;
+      }
+      await refreshSession();
+      closeSignInModal();
+      setStatus("Account created and signed in");
+      return;
+    }
+
     setStatus("Logging in...");
     await apiJson("/api/auth/login", {
       method: "POST",
@@ -1443,6 +1571,12 @@ loginForm.addEventListener("submit", async (event) => {
     setStatus(err.message, true);
   }
 });
+
+if (signInToggleModeButton) {
+  signInToggleModeButton.addEventListener("click", () => {
+    setAuthFormMode(authFormMode === "login" ? "signup" : "login");
+  });
+}
 
 if (accountSignInButton) {
   accountSignInButton.addEventListener("click", async () => {
@@ -2203,6 +2337,9 @@ document.addEventListener("click", (event) => {
   if (target instanceof HTMLElement && target.dataset.closeTeamModal === "true") {
     closeTeamModal();
   }
+  if (target instanceof HTMLElement && target.dataset.closeDatasheetModal === "true") {
+    closeDatasheetModal();
+  }
 
   if (target instanceof HTMLElement && target.dataset.deleteTeam) {
     const teamId = target.dataset.deleteTeam;
@@ -2292,6 +2429,53 @@ document.addEventListener("click", (event) => {
           setStatus("Option selected");
         })
         .catch((err) => {
+          setStatus(err.message, true);
+        });
+      return;
+    }
+  }
+
+  if (target instanceof HTMLElement) {
+    const datasheetButton = target.closest("[data-view-datasheet]");
+    if (datasheetButton instanceof HTMLElement && datasheetButton.dataset.viewDatasheet) {
+      const [requirementId, optionId] = datasheetButton.dataset.viewDatasheet.split(":");
+      if (!requirementId || !optionId) return;
+      const activeSource = getActiveRobotSource();
+      if (!activeSource) {
+        setStatus("Select a repo or folder first", true);
+        return;
+      }
+
+      renderDatasheetModalContent({
+        title: "Loading datasheet...",
+        summary: "Fetching source page and generating a concise datasheet summary..."
+      });
+      openDatasheetModal();
+      setStatus("Generating datasheet summary...");
+
+      apiJson(`/api/robot/requirements/${requirementId}/options/${optionId}/datasheet`, {
+        method: "POST",
+        body: JSON.stringify(activeSource.payload)
+      })
+        .then((data) => {
+          renderDatasheetModalContent({
+            title: data?.option?.title || "Datasheet summary",
+            sourceType: data?.datasheet?.type || data?.datasheet?.sourceType || "",
+            sourceUrl: data?.datasheet?.url || "",
+            summary: data?.datasheet?.summary || "",
+            highlights: data?.datasheet?.highlights || []
+          });
+          if (data.workspace) {
+            currentRobotWorkspace = data.workspace;
+            renderRobotOptionList(data.workspace, requirementId);
+          }
+          setStatus("Datasheet summary ready");
+        })
+        .catch((err) => {
+          renderDatasheetModalContent({
+            title: "Datasheet unavailable",
+            summary: err.message || "Unable to generate datasheet summary right now."
+          });
           setStatus(err.message, true);
         });
       return;
@@ -2567,6 +2751,9 @@ function renderRobotOptionList(workspace, focusRequirementId = "") {
               : ""
           }
           <div class="actions mt-3">
+            <button type="button" class="secondary-action" data-view-datasheet="${requirement.id}:${option.id}">
+              View Datasheet
+            </button>
             <button type="button" data-select-option="${requirement.id}:${option.id}">
               ${selected ? "Selected" : "Select Option"}
             </button>
